@@ -12,18 +12,21 @@ export interface CanvasKitOptions {
 export async function getCanvasKit(options?: CanvasKitOptions): Promise<CanvasKit> {
   if (instance) return instance
 
-  const defaultLocate = (file: string) => {
-    if (!IS_BROWSER) {
+  let locateFile = options?.locateFile
+  if (!locateFile) {
+    if (IS_BROWSER) {
+      const base = 'env' in import.meta ? import.meta.env.BASE_URL : '/'
+      const prefix = base === '/' ? '' : base.replace(/\/$/, '')
+      locateFile = (file) => `${prefix}/${file}`
+    } else {
+      const { fileURLToPath } = await import(/* @vite-ignore */ 'node:url')
       const ckPath = import.meta.resolve('canvaskit-wasm')
-      return decodeURIComponent(new URL(file, ckPath).pathname)
+      locateFile = (file) => fileURLToPath(new URL(file, ckPath))
     }
-    const base = 'env' in import.meta ? import.meta.env.BASE_URL : '/'
-    const prefix = base === '/' ? '' : base.replace(/\/$/, '')
-    return `${prefix}/${file}`
   }
 
   instance = await CanvasKitInit({
-    locateFile: options?.locateFile ?? defaultLocate
+    locateFile
   })
 
   return instance
