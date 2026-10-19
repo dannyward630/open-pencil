@@ -7,8 +7,8 @@ export interface EditorCommandMetadata {
 }
 
 export const EDITOR_COMMAND_METADATA = {
-  'edit.undo': { shortcut: 'MOD+Z', keybinding: '$mod+KeyZ' },
-  'edit.redo': { shortcut: 'MOD+SHIFT+Z', keybinding: ['$mod+Shift+KeyZ', '$mod+KeyY'] },
+  'edit.undo': { shortcut: 'MOD+Z', keybinding: '$mod+z' },
+  'edit.redo': { shortcut: 'MOD+SHIFT+Z', keybinding: ['$mod+Shift+z', '$mod+y'] },
   'selection.selectAll': { shortcut: 'MOD+A', keybinding: '$mod+KeyA' },
   'selection.selectInverse': { shortcut: 'MOD+SHIFT+A', keybinding: '$mod+Shift+KeyA' },
   // Enter also opens a vector's path or a text layer, so the app binds it with that.
