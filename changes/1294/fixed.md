@@ -1,0 +1,1 @@
+- Undo and redo shortcuts follow the characters printed on international keyboard layouts.
