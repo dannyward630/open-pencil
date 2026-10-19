@@ -1,1 +1,1 @@
-- Undo and redo shortcuts follow the characters printed on international keyboard layouts.
+- Keyboard shortcuts follow the letters printed on QWERTZ, AZERTY, and other Latin layouts, so Cmd/Ctrl+Z undoes on a German keyboard, and keep their key positions on Cyrillic and other non-Latin layouts.
