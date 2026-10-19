@@ -1,13 +1,10 @@
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
+import { getPageChildren } from '#tests/helpers/store'
 
 const editor = useEditorSetup()
 
-function getPageChildCount() {
-  return editor.page.evaluate(() => {
-    const store = window.openPencil?.getStore?.()
-    if (!store) throw new Error('OpenPencil store not initialized')
-    return store.graph.getChildren(store.state.currentPageId).length
-  })
+async function getPageChildCount() {
+  return (await getPageChildren(editor.page)).length
 }
 
 test.describe('undo/redo', () => {
@@ -16,14 +13,20 @@ test.describe('undo/redo', () => {
     await editor.canvas.drawRect(100, 100, 60, 60)
     expect(await getPageChildCount()).toBe(1)
 
-    await editor.page.keyboard.press('Meta+z')
+    await editor.page.keyboard.press('ControlOrMeta+z')
     await editor.canvas.waitForRender()
 
     expect(await getPageChildCount()).toBe(0)
   })
 
   test('⌘⇧Z redoes undone action', async () => {
-    await editor.page.keyboard.press('Meta+Shift+z')
+    await editor.canvas.clearCanvas()
+    await editor.canvas.drawRect(100, 100, 60, 60)
+    await editor.page.keyboard.press('ControlOrMeta+z')
+    await editor.canvas.waitForRender()
+    expect(await getPageChildCount()).toBe(0)
+
+    await editor.page.keyboard.press('ControlOrMeta+Shift+z')
     await editor.canvas.waitForRender()
 
     expect(await getPageChildCount()).toBe(1)
