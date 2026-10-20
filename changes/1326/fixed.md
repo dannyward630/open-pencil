@@ -1,0 +1,1 @@
+- `.pen` imports preserve current-format strokes, including multiple fills, stroke widths, and alignment, while keeping legacy stroke objects compatible.
