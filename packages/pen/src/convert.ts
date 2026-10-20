@@ -47,7 +47,7 @@ interface PenVariableValue {
   theme?: Record<string, string>
 }
 
-interface PenStroke {
+interface LegacyPenStroke {
   align: 'inside' | 'center' | 'outside'
   thickness: number | { top?: number; right?: number; bottom?: number; left?: number }
   fill?: string
@@ -70,7 +70,18 @@ interface PenFillObject {
   enabled?: boolean
 }
 
-type PenFill = string | PenFillObject | PenFillObject[]
+type PenFillItem = string | PenFillObject
+type PenFill = PenFillItem | PenFillItem[]
+type PenStroke = PenFill | LegacyPenStroke
+type PenStrokeWidth =
+  | number
+  | string
+  | {
+      top?: number | string
+      right?: number | string
+      bottom?: number | string
+      left?: number | string
+    }
 type PenSpacingValue = number | string
 type PenPadding =
   | PenSpacingValue
@@ -95,6 +106,10 @@ export interface PenNode {
   reusable?: boolean
   cornerRadius?: number | string | (number | string)[]
   stroke?: PenStroke
+  strokeWidth?: PenStrokeWidth
+  strokeAlignment?: 'inner' | 'center' | 'outer'
+  strokeLinecap?: 'butt' | 'round' | 'square'
+  strokeLinejoin?: 'miter' | 'bevel' | 'round'
   effect?: PenEffect | PenEffect[]
   layout?: string
   gap?: number | string
@@ -132,6 +147,11 @@ export interface VarContext {
   resolveString(ref: string): string
   setActiveTheme(themeName: string): void
 }
+
+type PenStrokeStyle = Pick<
+  PenNode,
+  'strokeWidth' | 'strokeAlignment' | 'strokeLinecap' | 'strokeLinejoin'
+>
 
 function penVarTypeToSceneType(t: string): VariableType {
   if (t === 'color') return 'COLOR'
@@ -301,45 +321,117 @@ export function convertFill(fill: PenFill | undefined, ctx: VarContext, node?: S
   })
 }
 
-function strokeWeight(stroke: PenStroke): number {
+function strokeWeight(stroke: LegacyPenStroke): number {
   return typeof stroke.thickness === 'number'
     ? stroke.thickness
     : Math.max(...Object.values(stroke.thickness))
 }
 
+function isLegacyPenStroke(stroke: PenStroke): stroke is LegacyPenStroke {
+  return !Array.isArray(stroke) && typeof stroke === 'object' && 'thickness' in stroke
+}
+
+function strokeWidths(
+  width: PenStrokeWidth | undefined,
+  ctx: VarContext
+): { weight: number; sides?: { top: number; right: number; bottom: number; left: number } } {
+  if (width !== undefined && typeof width === 'object') {
+    const sides = {
+      top: parseSize(width.top, 0, ctx).value,
+      right: parseSize(width.right, 0, ctx).value,
+      bottom: parseSize(width.bottom, 0, ctx).value,
+      left: parseSize(width.left, 0, ctx).value
+    }
+    return { weight: Math.max(sides.top, sides.right, sides.bottom, sides.left), sides }
+  }
+  return { weight: parseSize(width, 1, ctx).value }
+}
+
+function mapStrokeAlignment(align: string | undefined): Stroke['align'] {
+  if (align === 'inner' || align === 'inside') return 'INSIDE'
+  if (align === 'outer' || align === 'outside') return 'OUTSIDE'
+  return 'CENTER'
+}
+
+function applyStrokeNodeStyle(
+  node: SceneNode | undefined,
+  sides: { top: number; right: number; bottom: number; left: number } | undefined,
+  cap: StrokeCap,
+  join: StrokeJoin
+): void {
+  if (!node) return
+  if (sides) {
+    node.independentStrokeWeights = true
+    node.borderTopWeight = sides.top
+    node.borderRightWeight = sides.right
+    node.borderBottomWeight = sides.bottom
+    node.borderLeftWeight = sides.left
+  }
+  node.strokeJoin = join
+  node.strokeCap = cap
+}
+
 export function convertStroke(
   stroke: PenStroke | undefined,
   ctx: VarContext,
-  node?: SceneNode
+  node?: SceneNode,
+  style: PenStrokeStyle = {}
 ): Stroke[] {
-  if (!stroke?.fill) return []
-  const color = isVarRef(stroke.fill) ? ctx.resolveColor(stroke.fill) : parseColor(stroke.fill)
-  let align: Stroke['align'] = 'CENTER'
-  if (stroke.align === 'inside') align = 'INSIDE'
-  else if (stroke.align === 'outside') align = 'OUTSIDE'
+  if (stroke === undefined || stroke === '') return []
 
-  const result: Stroke = {
-    type: 'SOLID',
-    visible: true,
-    color,
-    opacity: color.a,
-    weight: strokeWeight(stroke),
-    align,
-    dashPattern: []
-  }
-  if (node) {
-    bindIfVar(node, 'strokes[0]', stroke.fill, ctx)
-    if (typeof stroke.thickness === 'object') {
-      node.independentStrokeWeights = true
-      node.borderTopWeight = stroke.thickness.top ?? 0
-      node.borderRightWeight = stroke.thickness.right ?? 0
-      node.borderBottomWeight = stroke.thickness.bottom ?? 0
-      node.borderLeftWeight = stroke.thickness.left ?? 0
+  if (isLegacyPenStroke(stroke)) {
+    if (!stroke.fill) return []
+    const color = isVarRef(stroke.fill) ? ctx.resolveColor(stroke.fill) : parseColor(stroke.fill)
+    const cap = mapStrokeCap(stroke.cap)
+    const join = mapStrokeJoin(stroke.join)
+    const result: Stroke = {
+      type: 'SOLID',
+      visible: true,
+      color,
+      opacity: color.a,
+      weight: strokeWeight(stroke),
+      align: mapStrokeAlignment(stroke.align),
+      cap,
+      join,
+      dashPattern: []
     }
-    node.strokeJoin = mapStrokeJoin(stroke.join)
-    node.strokeCap = mapStrokeCap(stroke.cap)
+    if (node) {
+      bindIfVar(node, 'strokes[0]', stroke.fill, ctx)
+      if (typeof stroke.thickness === 'object') {
+        node.independentStrokeWeights = true
+        node.borderTopWeight = stroke.thickness.top ?? 0
+        node.borderRightWeight = stroke.thickness.right ?? 0
+        node.borderBottomWeight = stroke.thickness.bottom ?? 0
+        node.borderLeftWeight = stroke.thickness.left ?? 0
+      }
+      applyStrokeNodeStyle(node, undefined, cap, join)
+    }
+    return [result]
   }
-  return [result]
+
+  const paints = convertFill(stroke, ctx)
+  const { weight, sides } = strokeWidths(style.strokeWidth, ctx)
+  const align = mapStrokeAlignment(style.strokeAlignment)
+  const cap = mapStrokeCap(style.strokeLinecap)
+  const join = mapStrokeJoin(style.strokeLinejoin)
+  const items = Array.isArray(stroke) ? stroke : [stroke]
+  const result = paints.map((paint): Stroke => ({
+    ...paint,
+    weight,
+    align,
+    cap,
+    join,
+    dashPattern: []
+  }))
+
+  if (node) {
+    items.forEach((item, index) => {
+      bindIfVar(node, `strokes[${index}]`, typeof item === 'string' ? item : item.color, ctx)
+    })
+    applyStrokeNodeStyle(node, sides, cap, join)
+  }
+
+  return result
 }
 
 function mapStrokeJoin(join: string | undefined): StrokeJoin {
