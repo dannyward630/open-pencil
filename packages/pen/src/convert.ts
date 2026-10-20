@@ -321,12 +321,6 @@ export function convertFill(fill: PenFill | undefined, ctx: VarContext, node?: S
   })
 }
 
-function strokeWeight(stroke: LegacyPenStroke): number {
-  return typeof stroke.thickness === 'number'
-    ? stroke.thickness
-    : Math.max(...Object.values(stroke.thickness))
-}
-
 function isLegacyPenStroke(stroke: PenStroke): stroke is LegacyPenStroke {
   return !Array.isArray(stroke) && typeof stroke === 'object' && 'thickness' in stroke
 }
@@ -356,10 +350,14 @@ function mapStrokeAlignment(align: string | undefined): Stroke['align'] {
 function applyStrokeNodeStyle(
   node: SceneNode | undefined,
   sides: { top: number; right: number; bottom: number; left: number } | undefined,
+  weight: number,
+  align: Stroke['align'],
   cap: StrokeCap,
   join: StrokeJoin
 ): void {
   if (!node) return
+  node.strokeWeight = weight
+  node.strokeAlign = align
   if (sides) {
     node.independentStrokeWeights = true
     node.borderTopWeight = sides.top
@@ -382,6 +380,8 @@ export function convertStroke(
   if (isLegacyPenStroke(stroke)) {
     if (!stroke.fill) return []
     const color = isVarRef(stroke.fill) ? ctx.resolveColor(stroke.fill) : parseColor(stroke.fill)
+    const { weight, sides } = strokeWidths(stroke.thickness, ctx)
+    const align = mapStrokeAlignment(stroke.align)
     const cap = mapStrokeCap(stroke.cap)
     const join = mapStrokeJoin(stroke.join)
     const result: Stroke = {
@@ -389,22 +389,15 @@ export function convertStroke(
       visible: true,
       color,
       opacity: color.a,
-      weight: strokeWeight(stroke),
-      align: mapStrokeAlignment(stroke.align),
+      weight,
+      align,
       cap,
       join,
       dashPattern: []
     }
     if (node) {
       bindIfVar(node, 'strokes[0]', stroke.fill, ctx)
-      if (typeof stroke.thickness === 'object') {
-        node.independentStrokeWeights = true
-        node.borderTopWeight = stroke.thickness.top ?? 0
-        node.borderRightWeight = stroke.thickness.right ?? 0
-        node.borderBottomWeight = stroke.thickness.bottom ?? 0
-        node.borderLeftWeight = stroke.thickness.left ?? 0
-      }
-      applyStrokeNodeStyle(node, undefined, cap, join)
+      applyStrokeNodeStyle(node, sides, weight, align, cap, join)
     }
     return [result]
   }
@@ -428,7 +421,7 @@ export function convertStroke(
     items.forEach((item, index) => {
       bindIfVar(node, `strokes[${index}]`, typeof item === 'string' ? item : item.color, ctx)
     })
-    applyStrokeNodeStyle(node, sides, cap, join)
+    applyStrokeNodeStyle(node, sides, weight, align, cap, join)
   }
 
   return result
