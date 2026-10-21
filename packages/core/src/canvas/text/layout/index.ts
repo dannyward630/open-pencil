@@ -161,7 +161,9 @@ export class TextLayout {
 
   private clearPlacements(): void {
     for (const placement of this.placements.values()) {
-      for (const piece of placement.pieces ?? []) piece.paragraph.delete()
+      for (const piece of placement.pieces ?? []) {
+        if (piece.ownsParagraph !== false) piece.paragraph.delete()
+      }
     }
     this.placements.clear()
     this.placedHeight = null
@@ -480,7 +482,30 @@ export class TextLayout {
       const pieces = this.placements.get(block)?.pieces
       if (!pieces) canvas.drawParagraph(block.paragraph, x + block.x, y + block.y)
       for (const piece of pieces ?? []) {
-        canvas.drawParagraph(piece.paragraph, x + block.x + piece.x, y + block.y + piece.y)
+        const pieceX = x + block.x + piece.x
+        const pieceY = y + block.y + piece.y
+        if (!piece.clip) {
+          canvas.drawParagraph(piece.paragraph, pieceX, pieceY)
+          continue
+        }
+
+        const extent = Math.max(1, piece.paragraph.getMaxWidth(), piece.paragraph.getLongestLine())
+        canvas.save()
+        try {
+          canvas.clipRect(
+            this.ck.LTRBRect(
+              pieceX - extent,
+              pieceY + piece.clip.top,
+              pieceX + extent,
+              pieceY + piece.clip.bottom
+            ),
+            this.ck.ClipOp.Intersect,
+            false
+          )
+          canvas.drawParagraph(piece.paragraph, pieceX, pieceY)
+        } finally {
+          canvas.restore()
+        }
       }
       const marker = block.marker
       if (marker) canvas.drawParagraph(marker.paragraph, x + marker.x, y + marker.y)

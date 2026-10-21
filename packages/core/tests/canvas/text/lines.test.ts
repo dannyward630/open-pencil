@@ -149,6 +149,32 @@ describe('lines of mixed sizes', () => {
     expect(right).toBeGreaterThan(155)
   })
 
+  test('reuses the original paragraph for lines that keep their offset', () => {
+    const text = Array.from({ length: 33 }, (_, index) =>
+      index === 16 ? 'small line LARGE' : `small line ${index}`
+    ).join('\n')
+    const layout = layOut({
+      text,
+      styleRuns: [run(text.indexOf('LARGE'), 'LARGE'.length, { fontSize: 40 })]
+    })
+    const lines = layout.blocks[0]?.lines
+    if (!lines?.build) throw new Error('Missing line builder')
+    const build = lines.build
+    let builds = 0
+    lines.build = (start, end, count, truncated) => {
+      builds++
+      return build(start, end, count, truncated)
+    }
+
+    try {
+      layout.layout(400)
+      // Only the lines shifted below the large word need a replacement paragraph.
+      expect(builds).toBe(1)
+    } finally {
+      layout.delete()
+    }
+  })
+
   test('centres the tallest font of a line in its line height', () => {
     const layout = layOut({
       text: 'Small LARGE\nsecond',
