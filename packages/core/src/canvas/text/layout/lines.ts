@@ -231,7 +231,7 @@ function movedPiece(
   return { paragraph, x: shift.x, y: shift.y + offsets[from], ownsParagraph: true }
 }
 
-function deleteOwnedPieces(pieces: readonly LinePiece[]): void {
+export function deleteOwnedPieces(pieces: readonly LinePiece[]): void {
   for (const piece of pieces) {
     if (piece.ownsParagraph !== false) piece.paragraph.delete()
   }

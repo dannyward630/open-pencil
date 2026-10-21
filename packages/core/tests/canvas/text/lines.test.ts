@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
-import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
+import type { Canvas, CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import { SceneGraph, type SceneNode, type StyleRun } from '@open-pencil/scene-graph'
 
@@ -47,12 +47,16 @@ const SURFACE_WIDTH = 400
 
 /** Whether each pixel is ink, drawing the layout at scale 1, by row. */
 function inkRows(layout: TextLayout): boolean[][] {
+  return inkRowsWith(layout, (canvas) => layout.draw(canvas, 0, 0))
+}
+
+function inkRowsWith(layout: TextLayout, draw: (canvas: Canvas) => void): boolean[][] {
   const height = Math.ceil(layout.getHeight()) + 20
   const surface = expectDefined(ck.MakeSurface(SURFACE_WIDTH, height), 'surface')
   try {
     const canvas = surface.getCanvas()
     canvas.clear(ck.WHITE)
-    layout.draw(canvas, 0, 0)
+    draw(canvas)
     const pixels = expectDefined(
       canvas.readPixels(0, 0, {
         width: SURFACE_WIDTH,
@@ -160,16 +164,62 @@ describe('lines of mixed sizes', () => {
     const lines = layout.blocks[0]?.lines
     if (!lines?.build) throw new Error('Missing line builder')
     const build = lines.build
-    let builds = 0
+    const builds: Array<{ start: number; end: number; count: number; truncated: boolean }> = []
     lines.build = (start, end, count, truncated) => {
-      builds++
+      builds.push({ start, end, count, truncated })
       return build(start, end, count, truncated)
     }
 
     try {
       layout.layout(400)
-      // Only the lines shifted below the large word need a replacement paragraph.
-      expect(builds).toBe(1)
+      const largeLineStart = text.indexOf('small line LARGE')
+      const largeLineEnd = text.indexOf('\n', largeLineStart)
+      expect(builds).toEqual([
+        { start: largeLineStart, end: largeLineEnd, count: 1, truncated: false }
+      ])
+      const baselines = layout.getLineMetrics().map((line) => line.baseline)
+      expect(baselines).toHaveLength(33)
+      for (const [index, baseline] of [
+        [0, 23.227],
+        [15, 458.227],
+        [16, 506.227],
+        [17, 535.227],
+        [32, 970.227]
+      ] as const) {
+        expect(Math.abs(baselines[index] - baseline)).toBeLessThan(0.01)
+      }
+      expect(Math.ceil(layout.getHeight())).toBe(976)
+    } finally {
+      layout.delete()
+    }
+  })
+
+  test('clips a moved line off the adjacent unchanged line at the pixel boundary', () => {
+    // A tall glyph with a short line height leaves source-paragraph ink at the group boundary.
+    const text = Array.from({ length: 33 }, (_, index) => {
+      if (index === 16) return 'i gyp'
+      if (index === 17) return ''
+      return 'i'
+    }).join('\n')
+    const layout = layOut({
+      text,
+      styleRuns: [run(text.indexOf('gyp'), 'gyp'.length, { fontSize: 60, lineHeight: 20 })]
+    })
+
+    try {
+      layout.layout(400)
+      const block = expectDefined(layout.blocks[0], 'text block')
+      const sourceRows = inkRowsWith(layout, (canvas) =>
+        canvas.drawParagraph(block.paragraph, block.x, block.y)
+      )
+      const placedRows = inkRows(layout)
+      const unchanged = layout.getLineMetrics()[15]
+      const boundary = Math.floor(unchanged.baseline + unchanged.descent)
+
+      // The full source paragraph has ink from the next, moved line at this edge pixel.
+      expect(sourceRows[boundary]?.[24]).toBe(true)
+      // The adjacent unchanged piece clips that old ink; only the moved paragraph is drawn.
+      expect(placedRows[boundary]?.[24]).toBe(false)
     } finally {
       layout.delete()
     }

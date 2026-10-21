@@ -11,6 +11,7 @@ import type {
 } from 'canvaskit-wasm'
 
 import {
+  deleteOwnedPieces,
   placeLines,
   shapedLinesByLine,
   type BlockPlacement,
@@ -161,9 +162,7 @@ export class TextLayout {
 
   private clearPlacements(): void {
     for (const placement of this.placements.values()) {
-      for (const piece of placement.pieces ?? []) {
-        if (piece.ownsParagraph !== false) piece.paragraph.delete()
-      }
+      deleteOwnedPieces(placement.pieces ?? [])
     }
     this.placements.clear()
     this.placedHeight = null
