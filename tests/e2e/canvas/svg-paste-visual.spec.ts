@@ -1,3 +1,6 @@
+import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import { expect, test, useEditorSetupWithClear } from '#tests/e2e/fixtures'
 
 const editor = useEditorSetupWithClear('/?test&no-chrome&no-rulers')
@@ -61,4 +64,35 @@ test('pasted SVG text measures and draws as Figma lays it out', async () => {
   await editor.canvas.waitForRender()
   editor.canvas.assertNoErrors()
   expect(await editor.canvas.screenshotCanvasRegion()).toMatchSnapshot('svg-text-layers.png')
+})
+
+function exportedStyledText(): string {
+  const graph = new SceneGraph()
+  const pageId = graph.getPages()[0].id
+  const node = graph.createNode('TEXT', pageId, {
+    width: 200,
+    height: 60,
+    text: 'Hello bold world',
+    fontFamily: 'Inter',
+    fontSize: 24,
+    styleRuns: [{ start: 6, length: 4, style: { fontWeight: 700 } }]
+  })
+  const svg = renderNodesToSVG(graph, pageId, [node.id], { xmlDeclaration: false })
+  if (!svg) throw new Error('nothing exported')
+  return svg
+}
+
+test('exported SVG text keeps characters outside the style run', async () => {
+  const pasted = await editor.page.evaluate(async (markup) => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const done = await store.pasteSVG(markup, 220, 160)
+    store.clearSelection()
+    store.requestRender()
+    return done
+  }, exportedStyledText())
+  expect(pasted).toBe(true)
+  await editor.canvas.waitForRender()
+  editor.canvas.assertNoErrors()
+  expect(await editor.canvas.screenshotCanvasRegion()).toMatchSnapshot('svg-export-style-runs.png')
 })
