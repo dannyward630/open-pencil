@@ -17,7 +17,7 @@ const CLIPPED_SVG = `<svg viewBox="0 0 200 120" width="200" height="120">
 </svg>`
 
 test('pasted SVG clip paths draw through their mask groups', async () => {
-  const pasted = await editor.canvas.pasteSvg(CLIPPED_SVG, 220, 160)
+  const pasted = await editor.canvas.pasteSVG(CLIPPED_SVG, 220, 160)
   expect(pasted).toBe(true)
   await editor.canvas.waitForRender()
   editor.canvas.assertNoErrors()
@@ -32,7 +32,7 @@ const TEXT_SVG = `<svg viewBox="0 0 200 130" width="200" height="130">
 </svg>`
 
 test('pasted SVG text measures and draws as Figma lays it out', async () => {
-  await editor.canvas.pasteSvg(TEXT_SVG, 220, 160)
+  await editor.canvas.pasteSVG(TEXT_SVG, 220, 160)
   const layers = await editor.page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
@@ -74,7 +74,7 @@ function exportedStyledText(): string {
 }
 
 test('exported SVG text keeps characters outside the style run', async () => {
-  const pasted = await editor.canvas.pasteSvg(exportedStyledText(), 220, 160)
+  const pasted = await editor.canvas.pasteSVG(exportedStyledText(), 220, 160)
   expect(pasted).toBe(true)
   await editor.canvas.waitForRender()
   editor.canvas.assertNoErrors()

@@ -79,7 +79,7 @@ export class CanvasHelper {
     await this.waitForRender()
   }
 
-  async pasteSvg(markup: string, x: number, y: number) {
+  async pasteSVG(markup: string, x: number, y: number) {
     return this.page.evaluate(
       async ({ markup, x, y }) => {
         const store = window.openPencil?.getStore?.()
