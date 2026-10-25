@@ -235,8 +235,9 @@ function claimApplies(field: OverrideField, value: unknown, target: SceneNode): 
 }
 
 /**
- * A claimed paint carries its colour alias inside the paint, so the binding it declares is
- * part of the claim too; otherwise a later component sync restores the component's binding.
+ * A claimed paint carries its colour alias inside the paint, so the binding of each claimed
+ * paint is part of the claim too, an alias or the lack of one: otherwise a later component
+ * sync restores the component's binding over a colour the override set.
  */
 function recordPaintBindingClaims(
   owner: SceneNode,
@@ -245,21 +246,31 @@ function recordPaintBindingClaims(
   paints: unknown
 ): void {
   if (!Array.isArray(paints)) return
-  let declared = false
-  for (const [index, paint] of paints.entries()) {
-    const alias = (paint as Paint).colorVar?.value?.alias
-    if (!alias) continue
-    const field = `boundVariables/${scene}/${index}/color`
+  const pattern = new RegExp(`^${scene}/(\\d+)/color$`)
+  // A binding of a paint past the claimed ones belongs to a paint the claim removed.
+  const removed = Object.keys(target.boundVariables).flatMap((key) => {
+    const index = Number(pattern.exec(key)?.[1] ?? Number.NaN)
+    return index >= paints.length ? [index] : []
+  })
+  const claimed = [...paints.keys(), ...removed]
+  for (const index of claimed) {
+    const key = `${scene}/${index}/color`
+    const paint: Paint | undefined = paints[index]
+    // The layer took the component's binding with its other fields; a literal colour drops it.
+    if (!paint?.colorVar?.value?.alias && key in target.boundVariables) {
+      const { [key]: _dropped, ...kept } = target.boundVariables
+      target.boundVariables = kept
+    }
     setInstanceOverride(
       owner.instanceOverrides,
       owner.id,
       target.id,
-      field,
-      target.boundVariables[`${scene}/${index}/color`] ?? null
+      `boundVariables/${key}`,
+      target.boundVariables[key] ?? null
     )
-    declared = true
   }
-  if (declared) setInstanceOverride(owner.instanceOverrides, owner.id, target.id, 'boundVariables')
+  if (claimed.length > 0)
+    setInstanceOverride(owner.instanceOverrides, owner.id, target.id, 'boundVariables')
 }
 
 function recordPropertyClaims(nodes: ReadonlyMap<InstanceOccurrence, SceneNode>): void {
