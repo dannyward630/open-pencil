@@ -1,0 +1,1 @@
+- SVG export reports visible backdrop blur as unsupported instead of silently applying a layer blur.
