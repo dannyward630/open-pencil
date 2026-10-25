@@ -50,7 +50,7 @@ for (const method of ['resize', 'resizeWithoutConstraints'] as const) {
     // Our SVG import keeps the closing point as its own vertex, which Figma merges.
     const vertices = uniqBy(
       resizedNetwork.vertices.map(({ x, y }) => [round(x), round(y)]),
-      (point) => point.join()
+      (point) => point.join(',')
     )
     expect(vertices).toEqual(RESIZED_VERTICES)
   })
