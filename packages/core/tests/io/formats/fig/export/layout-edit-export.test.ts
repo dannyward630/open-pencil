@@ -86,7 +86,6 @@ test('an edit-caused layout is saved to an imported FIG archive', async () => {
 
   const input = await exportFigFile(source)
   const graph = await parseFigFile(input.slice().buffer as ArrayBuffer)
-  const page = graph.getPages()[0]
   const layer = (name: string) => {
     const found = [...graph.getAllNodes()].find((node) => node.name === name)
     if (!found) throw new Error(`Missing ${name}`)
