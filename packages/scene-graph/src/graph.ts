@@ -571,7 +571,9 @@ export class SceneGraph {
       if (changes.componentId) this.indexInstance(changes.componentId, id)
     }
     if (node.type === 'TEXT') invalidateTextCaches(node, changes)
-    if (this.scopeDepths.sourceMetadata === 0 && !this.isApplyingLayout) {
+    // Layout caused by an edit invalidates imported geometry. Only layout explicitly
+    // marked as derived from the file or its fonts keeps the original source fields.
+    if (this.scopeDepths.sourceMetadata === 0 && !this.isApplyingDerivedLayout) {
       markSourceFieldsEdited(node, Object.keys(changes))
     }
     if (changes.vectorNetwork) {
