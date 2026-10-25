@@ -96,7 +96,13 @@ describe('color-contrast', () => {
     // 3.2:1 against white.
     const grey = { r: 0.55, g: 0.55, b: 0.55, a: 1 }
     const text = (name: string, fontSize: number, fontWeight: number) =>
-      graph.createNode('TEXT', card.id, { name, text: name, fontSize, fontWeight, fills: solid(grey) })
+      graph.createNode('TEXT', card.id, {
+        name,
+        text: name,
+        fontSize,
+        fontWeight,
+        fills: solid(grey)
+      })
     const body = text('Body', 16, 400)
     const boldBody = text('Bold body', 18, 700)
     text('Display', 24, 400)
@@ -167,6 +173,43 @@ describe('touch-target-size', () => {
 
     expect(messages.map((message) => message.nodeId)).toEqual([chip.id])
     expect(messages[0]?.data).toEqual({ width: 60, height: 24, minSize: 44 })
+  })
+
+  test('checks the controls inside plural-named groups individually', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const group = graph.createNode('FRAME', pageId, {
+      name: 'Footer links',
+      width: 280,
+      height: 20
+    })
+    const links = [
+      graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 }),
+      graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 }),
+      graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 })
+    ]
+
+    const messages = lint(graph, 'touch-target-size')
+
+    expect(messages.map((message) => message.nodeId)).toEqual(links.map((link) => link.id))
+  })
+
+  test('keeps singularly named controls as targets even when they contain children', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const button = graph.createNode('FRAME', pageId, { name: 'Button', width: 40, height: 20 })
+    graph.createNode('FRAME', button.id, { name: 'Icon', width: 16, height: 16 })
+
+    expect(lint(graph, 'touch-target-size').map((message) => message.nodeId)).toEqual([button.id])
+  })
+
+  test('keeps a plural-named layer as a target when it has fewer than two children', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const group = graph.createNode('FRAME', pageId, { name: 'Links', width: 40, height: 20 })
+    graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 })
+
+    expect(lint(graph, 'touch-target-size').map((message) => message.nodeId)).toEqual([group.id])
   })
 
   test('matches control names as whole words', () => {
