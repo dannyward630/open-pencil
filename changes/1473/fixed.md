@@ -1,0 +1,1 @@
+- The touch-target-size lint rule now checks individual controls inside plural-named groups with multiple children.
