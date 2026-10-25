@@ -41,6 +41,7 @@ import {
 import type { FigmaTransform } from '#core/figma-api/types'
 import { syncVariantName } from '#core/figma-api/variants'
 import { figmaRotation } from '#core/geometry/figma'
+import { computeAccurateBounds } from '#core/vector/curve-math'
 
 const TRANSFORM_FIELDS: ReadonlySet<string> = new Set(NODE_TRANSFORM_FIELDS)
 
@@ -275,9 +276,37 @@ function resizedVectorGeometry(node: SceneNode, width: number, height: number): 
     strokes: [],
     strokeGeometry: strokesPath ? [] : snapshot.strokeGeometry
   }
-  const geometry = scaledGeometryChanges(path, node.width, node.height, width, height)
+  // A side at zero keeps the path along it, as in Figma, so the next resize scales the path from
+  // its own extent and gets the shape back.
+  const bounds = node.vectorNetwork ? computeAccurateBounds(node.vectorNetwork) : null
+  const fromWidth = node.width > 0 ? node.width : (bounds?.width ?? 0)
+  const fromHeight = node.height > 0 ? node.height : (bounds?.height ?? 0)
+  const geometry = scaledGeometryChanges(
+    path,
+    fromWidth,
+    fromHeight,
+    width || fromWidth,
+    height || fromHeight
+  )
   if (!strokesPath || isEmptyObject(geometry) || node.strokeGeometry.length === 0) return geometry
   return { ...geometry, strokeGeometry: [] }
+}
+
+/** The least size Figma's `resize` gives a vector side; `resizeWithoutConstraints` allows zero. */
+const MIN_VECTOR_RESIZE = 0.0001
+
+/** The size a resize gives a node: a vector cannot become 0×0, and `resize` keeps its sides above zero. */
+function resizedSize(
+  node: SceneNode,
+  width: number,
+  height: number,
+  constrained: boolean
+): { width: number; height: number } {
+  if (node.type !== 'VECTOR') return { width, height }
+  if (width === 0 && height === 0)
+    throw new Error('Cannot set width and height of vector node to zero')
+  if (!constrained) return { width, height }
+  return { width: Math.max(width, MIN_VECTOR_RESIZE), height: Math.max(height, MIN_VECTOR_RESIZE) }
 }
 
 /**
@@ -289,13 +318,14 @@ function resizedVectorGeometry(node: SceneNode, width: number, height: number): 
 function resizeNode(
   target: ProxyThis,
   internals: NodeProxyInternals,
-  width: number,
-  height: number,
+  requestedWidth: number,
+  requestedHeight: number,
   constrained: boolean
 ): void {
   assertEditable(target, internals)
   const scene = graph(target, internals)
   const node = raw(target, internals)
+  const { width, height } = resizedSize(node, requestedWidth, requestedHeight, constrained)
   const before = containerTransform(node, scene)
   const size = { width: node.width, height: node.height }
   // An instance's layers follow its constraints however it is resized, as in Figma.

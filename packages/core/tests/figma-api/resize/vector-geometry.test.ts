@@ -98,3 +98,42 @@ test('a vector without a network keeps its saved stroke outline, scaled with the
   if (!blob) throw new Error('Resized vector lost its stroke outline')
   expect(new DataView(blob.buffer, blob.byteOffset).getFloat32(5, true)).toBeCloseTo(38)
 })
+
+// Recorded in Figma 126 for the same 318×80 rectangle.
+test('a vector cannot be resized to 0×0', () => {
+  const vector = importedVector()
+  expect(() => vector.resize(0, 0)).toThrow('Cannot set width and height of vector node to zero')
+  expect(() => vector.resizeWithoutConstraints(0, 0)).toThrow(
+    'Cannot set width and height of vector node to zero'
+  )
+  expect(vector.width).toBe(318)
+})
+
+test('resize keeps a vector side above zero, so the shape comes back', () => {
+  const vector = importedVector()
+  vector.resize(0, 80)
+  expect(vector.width).toBeCloseTo(0.0001, 6)
+
+  vector.resize(318, 80)
+  const corners = vector.vectorNetwork?.vertices.slice(0, 3).map(({ x, y }) => [round(x), round(y)])
+  expect(corners).toEqual([
+    [12, 0],
+    [306, 0],
+    [318, 12]
+  ])
+})
+
+test('resizeWithoutConstraints to a zero side keeps the path, so the shape comes back', () => {
+  const vector = importedVector()
+  vector.resizeWithoutConstraints(0, 64)
+  expect(vector.width).toBe(0)
+  expect(vector.height).toBe(64)
+
+  vector.resizeWithoutConstraints(318, 80)
+  const corners = vector.vectorNetwork?.vertices.slice(0, 3).map(({ x, y }) => [round(x), round(y)])
+  expect(corners).toEqual([
+    [12, 0],
+    [306, 0],
+    [318, 12]
+  ])
+})
