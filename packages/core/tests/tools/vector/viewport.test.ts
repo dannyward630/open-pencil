@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
+import type { SkiaRenderer } from '@open-pencil/core/canvas'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { viewportZoomToFit } from '#core/tools/vector/viewport'
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { viewportZoomToFit } from '#core/tools/vector/viewport'
 
 describe('viewport_zoom_to_fit', () => {
   test.each([
@@ -26,6 +28,35 @@ describe('viewport_zoom_to_fit', () => {
       center: { x: 40 + width / 2, y: 20 + height / 2 },
       bounds: { x: 40, y: 20, width, height }
     })
-    expect(figma.viewport.zoom).toBeLessThan(1)
+    const viewport = figma.viewport
+    expect(width * viewport.zoom).toBeLessThanOrEqual(1280)
+    expect(height * viewport.zoom).toBeLessThanOrEqual(720)
+    expect(viewport.center).toEqual(result.center)
+  })
+
+  test('fits the measured renderer viewport', () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const page = graph.getPages()[0]
+    if (!page) throw new Error('SceneGraph should create a default page')
+    const viewportSize = { width: 640, height: 400 }
+    const renderer: Partial<SkiaRenderer> = {
+      viewportWidth: viewportSize.width,
+      viewportHeight: viewportSize.height
+    }
+    figma.setRenderer(renderer as SkiaRenderer)
+    const frame = graph.createNode('FRAME', page.id, {
+      x: 40,
+      y: 20,
+      width: 8000,
+      height: 4800
+    })
+
+    const result = viewportZoomToFit.execute(figma, { ids: [frame.id] })
+    const viewport = figma.viewport
+
+    expect(8000 * viewport.zoom).toBeLessThanOrEqual(viewportSize.width)
+    expect(4800 * viewport.zoom).toBeLessThanOrEqual(viewportSize.height)
+    expect(viewport.center).toEqual(result.center)
   })
 })
