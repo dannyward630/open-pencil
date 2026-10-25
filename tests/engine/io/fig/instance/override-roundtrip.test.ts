@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { exportFigFile, parseFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 describe('instance descendant fill override round trip', () => {
   test('a recolored nested instance child keeps its color after a save/reload cycle', async () => {
@@ -56,7 +57,7 @@ describe('instance descendant fill override round trip', () => {
       b: 0.91,
       a: 1
     })
-    const solid = (color: { r: number; g: number; b: number; a: number }, opacity = 1) => [
+    const solid = (color: Color, opacity = 1) => [
       { type: 'SOLID' as const, color, opacity, visible: true }
     ]
     const button = graph.createNode('COMPONENT', page.id, {
