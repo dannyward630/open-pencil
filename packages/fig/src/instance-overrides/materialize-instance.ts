@@ -1,6 +1,7 @@
 import { isEqual } from 'es-toolkit/predicate'
 
 import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
+import { guidToString } from '@open-pencil/kiwi/fig/guid'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { setInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
 import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
@@ -256,17 +257,18 @@ function recordPaintBindingClaims(
   for (const index of claimed) {
     const key = `${scene}/${index}/color`
     const paint: Paint | undefined = paints[index]
-    // The layer took the component's binding with its other fields; a literal colour drops it.
-    if (!paint?.colorVar?.value?.alias && key in target.boundVariables) {
-      const { [key]: _dropped, ...kept } = target.boundVariables
-      target.boundVariables = kept
-    }
+    const alias = paint?.colorVar?.value?.alias
+    const binding = alias?.guid
+      ? guidToString(alias.guid)
+      : alias
+        ? target.boundVariables[key]
+        : undefined
     setInstanceOverride(
       owner.instanceOverrides,
       owner.id,
       target.id,
       `boundVariables/${key}`,
-      target.boundVariables[key] ?? null
+      binding ?? null
     )
   }
   if (claimed.length > 0)

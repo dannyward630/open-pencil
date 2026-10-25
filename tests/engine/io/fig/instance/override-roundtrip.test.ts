@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { exportFigFile, parseFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
 describe('instance descendant fill override round trip', () => {
@@ -77,7 +78,6 @@ describe('instance descendant fill override round trip', () => {
       fills: solid({ r: 0, g: 0, b: 0, a: 0 }, 0),
       boundVariables: {}
     })
-    const { recordInstanceOverride } = await import('@open-pencil/scene-graph/instances')
     recordInstanceOverride(graph, copy.id, ['fills', 'boundVariables'])
 
     const reloaded = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)
@@ -89,5 +89,46 @@ describe('instance descendant fill override round trip', () => {
     const synced = reloaded.getNode(reloadedCopy.id)
     expect(synced?.fills[0]).toMatchObject({ color: { r: 0, g: 0, b: 0, a: 0 }, opacity: 0 })
     expect(synced?.boundVariables['fills/0/color']).toBeUndefined()
+  })
+
+  test('an outer variable binding survives an inner literal paint claim after reload', async () => {
+    await initCodec()
+
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const collection = graph.createCollection('Tokens')
+    const accent = graph.createVariable('accent', 'COLOR', collection.id, {
+      r: 0.1,
+      g: 0.5,
+      b: 0.3,
+      a: 1
+    })
+    const solid = (color: Color) => [{ type: 'SOLID' as const, color, opacity: 1, visible: true }]
+    const button = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+    const card = graph.createNode('COMPONENT', page.id, { name: 'Card' })
+    const nested = graph.createInstance(button.id, card.id)
+    if (!nested) throw new Error('failed to create the nested instance')
+    graph.updateNode(nested.id, {
+      fills: solid({ r: 0, g: 0, b: 0, a: 0 }),
+      boundVariables: {}
+    })
+    recordInstanceOverride(graph, nested.id, ['fills', 'boundVariables'])
+
+    const use = graph.createInstance(card.id, page.id, { name: 'Use' })
+    if (!use) throw new Error('failed to create the outer instance')
+    const [copy] = graph.getChildren(use.id)
+    if (!copy) throw new Error('missing nested instance copy')
+    graph.bindVariable(copy.id, 'fills/0/color', accent.id)
+
+    const reloaded = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)
+    const reloadedUse = [...reloaded.getAllNodes()].find(
+      (node) => node.type === 'INSTANCE' && node.name === 'Use'
+    )
+    const reloadedCopy = reloadedUse ? reloaded.getChildren(reloadedUse.id)[0] : undefined
+    if (!reloadedUse || !reloadedCopy) throw new Error('Missing the reloaded nested instance')
+    reloaded.syncInstance(reloadedUse.id)
+
+    const synced = reloaded.getNode(reloadedCopy.id)
+    expect(synced?.boundVariables['fills/0/color']).toBe(accent.id)
   })
 })
