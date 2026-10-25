@@ -9,6 +9,7 @@ import { initCodec, type NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { markFlowChanged } from '#core/layout/derived'
+import { createLayoutRunner } from '#core/layout/mutations'
 
 test('retained implicit layout survives import but does not override an explicit sizing edit', async () => {
   await initCodec()
@@ -100,7 +101,7 @@ test('an edit-caused layout is saved to an imported FIG archive', async () => {
   graph.insertChildAt(inserted.id, importedParent.id, 1)
   // The editor's graph-event bridge marks the flow when children are inserted or reordered.
   markFlowChanged(graph, importedParent.id)
-  computeAllLayouts(graph, page.id)
+  createLayoutRunner(() => graph).runLayoutForNode(inserted.id)
 
   expect(importedParent.height).toBe(188)
   expect(layer('Last block').y).toBe(140)
