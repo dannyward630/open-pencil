@@ -215,6 +215,11 @@ export function createFilterDef(
 ): { id: string; node: SVGNode } | null {
   const visible = effects.filter((e) => e.visible)
   if (visible.length === 0) return null
+  if (visible.some((effect) => effect.type === 'BACKGROUND_BLUR')) {
+    throw new Error(
+      'SVG export cannot faithfully represent BACKGROUND_BLUR: SVG filters cannot sample the backdrop.'
+    )
+  }
 
   const id = nextDefId(ctx, 'fx')
   const primitives: SVGNode[] = []
