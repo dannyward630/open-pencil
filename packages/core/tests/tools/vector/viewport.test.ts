@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Rect, Vector } from '@open-pencil/core'
 import type { SkiaRenderer } from '@open-pencil/core/canvas'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { viewportZoomToFit } from '#core/tools/vector/viewport'
 
