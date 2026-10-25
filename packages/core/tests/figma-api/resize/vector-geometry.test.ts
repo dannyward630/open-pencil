@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
 
+import { uniqBy } from 'es-toolkit'
+
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { createSVGNodes } from '@open-pencil/core/io/formats/svg'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -20,12 +22,24 @@ function importedVector(svg = SVG, graph = new SceneGraph()) {
   return proxy
 }
 
+// Recorded in Figma 126: both methods squeeze the 12 px corners to 9.6 px tall.
+const round = (value: number) => Math.round(value * 1000) / 1000
+
+const RESIZED_VERTICES = [
+  [12, 0],
+  [306, 0],
+  [318, 9.6],
+  [318, 54.4],
+  [306, 64],
+  [12, 64],
+  [0, 54.4],
+  [0, 9.6]
+]
+
 for (const method of ['resize', 'resizeWithoutConstraints'] as const) {
   test(`${method} scales an imported vector's geometry with its box`, () => {
     // Regression for #1438: the SVG path must follow the new Plugin API dimensions.
     const vector = importedVector()
-    const originalNetwork = vector.vectorNetwork
-    if (!originalNetwork) throw new Error('SVG rectangle has no vector network')
 
     vector[method](318, 64)
 
@@ -33,11 +47,12 @@ for (const method of ['resize', 'resizeWithoutConstraints'] as const) {
     if (!resizedNetwork) throw new Error('Resized vector has no vector network')
     expect(vector.width).toBe(318)
     expect(vector.height).toBe(64)
-    expect(resizedNetwork).not.toEqual(originalNetwork)
-    expect(Math.max(...resizedNetwork.vertices.map(({ y }) => y))).toBeCloseTo(64)
-    expect(resizedNetwork.vertices.map(({ y }) => y)).toEqual(
-      originalNetwork.vertices.map(({ y }) => y * 0.8)
+    // Our SVG import keeps the closing point as its own vertex, which Figma merges.
+    const vertices = uniqBy(
+      resizedNetwork.vertices.map(({ x, y }) => [round(x), round(y)]),
+      (point) => point.join()
     )
+    expect(vertices).toEqual(RESIZED_VERTICES)
   })
 }
 
