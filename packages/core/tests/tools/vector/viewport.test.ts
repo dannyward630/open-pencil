@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import type { Rect, Vector } from '@open-pencil/core'
 import type { SkiaRenderer } from '@open-pencil/core/canvas'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -7,8 +8,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { viewportZoomToFit } from '#core/tools/vector/viewport'
 
 type ViewportZoomToFitResult = {
-  center: { x: number; y: number }
-  bounds: { x: number; y: number; width: number; height: number }
+  center: Vector
+  bounds: Rect
 }
 
 const fitNodes = (figma: FigmaAPI, ids: string[]): ViewportZoomToFitResult =>
