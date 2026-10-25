@@ -6,6 +6,14 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { viewportZoomToFit } from '#core/tools/vector/viewport'
 
+type ViewportZoomToFitResult = {
+  center: { x: number; y: number }
+  bounds: { x: number; y: number; width: number; height: number }
+}
+
+const fitNodes = (figma: FigmaAPI, ids: string[]): ViewportZoomToFitResult =>
+  viewportZoomToFit.execute(figma, { ids }) as ViewportZoomToFitResult
+
 describe('viewport_zoom_to_fit', () => {
   test.each([
     [4000, 2400],
@@ -22,7 +30,7 @@ describe('viewport_zoom_to_fit', () => {
       height
     })
 
-    const result = viewportZoomToFit.execute(figma, { ids: [frame.id] })
+    const result = fitNodes(figma, [frame.id])
 
     expect(result).toEqual({
       center: { x: 40 + width / 2, y: 20 + height / 2 },
@@ -52,7 +60,7 @@ describe('viewport_zoom_to_fit', () => {
       height: 4800
     })
 
-    const result = viewportZoomToFit.execute(figma, { ids: [frame.id] })
+    const result = fitNodes(figma, [frame.id])
     const viewport = figma.viewport
 
     expect(8000 * viewport.zoom).toBeLessThanOrEqual(viewportSize.width)
