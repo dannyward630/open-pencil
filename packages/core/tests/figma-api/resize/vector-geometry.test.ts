@@ -69,3 +69,32 @@ test('resize keeps the stroke weight and draws the stroke from the scaled path',
   expect(vector.strokeWeight).toBe(4)
   expect(graph.getNode(vector.id)?.strokeGeometry).toEqual([])
 })
+
+/** A path that moves to (x, y), enough for saved geometry to scale. */
+function moveTo(x: number, y: number) {
+  const commandsBlob = new Uint8Array(9)
+  commandsBlob[0] = 1
+  const view = new DataView(commandsBlob.buffer)
+  view.setFloat32(1, x, true)
+  view.setFloat32(5, y, true)
+  return { windingRule: 'NONZERO' as const, commandsBlob }
+}
+
+test('a vector without a network keeps its saved stroke outline, scaled with the shape', () => {
+  const graph = new SceneGraph()
+  const vector = importedVector(STROKED_SVG, graph)
+  graph.updateNode(vector.id, {
+    vectorNetwork: null,
+    fillGeometry: [moveTo(0, 76)],
+    strokeGeometry: [moveTo(0, 76)]
+  })
+
+  vector.resize(vector.width, vector.height / 2)
+
+  const node = graph.getNode(vector.id)
+  expect(vector.strokeWeight).toBe(4)
+  expect(node?.strokeGeometry).toHaveLength(1)
+  const blob = node?.strokeGeometry[0]?.commandsBlob
+  if (!blob) throw new Error('Resized vector lost its stroke outline')
+  expect(new DataView(blob.buffer, blob.byteOffset).getFloat32(5, true)).toBeCloseTo(38)
+})

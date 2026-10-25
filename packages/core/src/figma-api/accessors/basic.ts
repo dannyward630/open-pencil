@@ -262,14 +262,21 @@ function descendants(scene: SceneGraph, node: SceneNode): SceneNode[] {
 }
 
 /**
- * A vector's path scaled to its new size, as Figma's resize does. The stroke keeps its weight, so
- * the saved stroke outline goes and the stroke draws from the scaled path, as when the path is set.
+ * A vector's path scaled to its new size, as Figma's resize does. The stroke keeps its weight: with
+ * a network to stroke, the saved stroke outline goes and the stroke draws from the scaled path, as
+ * when the path is set; without one, the outline is all that draws the stroke, so it scales too.
  */
 function resizedVectorGeometry(node: SceneNode, width: number, height: number): Partial<SceneNode> {
   if (node.type !== 'VECTOR') return {}
-  const path = { ...createResizeSnapshot(node), strokes: [], strokeGeometry: [] }
+  const strokesPath = (node.vectorNetwork?.vertices.length ?? 0) > 0
+  const snapshot = createResizeSnapshot(node)
+  const path = {
+    ...snapshot,
+    strokes: [],
+    strokeGeometry: strokesPath ? [] : snapshot.strokeGeometry
+  }
   const geometry = scaledGeometryChanges(path, node.width, node.height, width, height)
-  if (isEmptyObject(geometry) || node.strokeGeometry.length === 0) return geometry
+  if (!strokesPath || isEmptyObject(geometry) || node.strokeGeometry.length === 0) return geometry
   return { ...geometry, strokeGeometry: [] }
 }
 
