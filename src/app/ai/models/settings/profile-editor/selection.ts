@@ -12,10 +12,22 @@ import { resolveModelsDevModel } from '@/app/ai/models/catalog'
 import { useProviderModelCatalog } from '@/app/ai/models/catalog/use'
 import { modelPickerOptions, type ModelPickerLabels } from '@/app/ai/models/picker/options'
 import { supportsThinkingLevel } from '@/app/ai/models/thinking'
+import { OPENPENCIL_AI_PROVIDER } from '@/app/ai/providers/openpencil/provider'
+
+import { useCloudModelSelection } from './cloud'
 
 export function useProfileModelSelection(
   draft: AIModelProfileDraft,
-  ai: Readonly<Ref<ModelPickerLabels & { customModel: string }>>
+  ai: Readonly<Ref<ModelPickerLabels & { customModel: string }>>,
+  {
+    applyCatalogDetails = (apply) => apply()
+  }: {
+    /**
+     * Applies what the catalog says about the model once it has been read. The read finishes
+     * after the editor opens, so the editor decides whether its changes count as edits.
+     */
+    applyCatalogDetails?: (apply: () => void) => void
+  } = {}
 ) {
   const CUSTOM_MODEL_VALUE = '__custom__'
   const DEFAULT_MAX_OUTPUT_TOKENS = 16384
@@ -29,7 +41,11 @@ export function useProfileModelSelection(
   )
   const catalogProviderID = computed(() => draft.providerID)
   const fallbackModels = computed(() => providerDef.value.models)
-  const { models: availableModels } = useProviderModelCatalog(catalogProviderID, fallbackModels)
+  const { models: providerModels } = useProviderModelCatalog(catalogProviderID, fallbackModels)
+  const cloud = useCloudModelSelection(draft, (modelID) => updateModel(modelID))
+  const availableModels = computed(() =>
+    cloud.isCloud.value ? cloud.models.value : providerModels.value
+  )
   const isACP = computed(() => draft.providerID.startsWith('acp:'))
   const isHarness = computed(() => draft.providerID === 'harness:pi')
   const supportsThinking = computed(() => supportsThinkingLevel(draft.providerID))
@@ -107,8 +123,10 @@ export function useProfileModelSelection(
     const resolved = await resolveModelsDevModel(providerID, modelID)
     if (providerID !== draft.providerID || modelID !== effectiveModelID()) return
 
-    catalogModel.value = resolved
-    applyKnownModelMetadata()
+    applyCatalogDetails(() => {
+      catalogModel.value = resolved
+      applyKnownModelMetadata()
+    })
   }
 
   function applyKnownModelMetadata(): void {
@@ -129,6 +147,7 @@ export function useProfileModelSelection(
     customModelSelected.value = providerID === 'harness:pi'
     draft.customBaseURL = ''
     draft.customAPIType = 'completions'
+    if (providerID !== OPENPENCIL_AI_PROVIDER) draft.cloudWorkspaceId = undefined
     if (providerID.startsWith('acp:')) {
       draft.capabilities = ['tools']
       if (!draft.name.trim()) draft.name = providerDisplayName.value
@@ -169,6 +188,10 @@ export function useProfileModelSelection(
     providerDef,
     isACP,
     isHarness,
+    isCloud: cloud.isCloud,
+    cloudWorkspaces: cloud.workspaces,
+    cloudState: cloud.state,
+    retryCloud: cloud.retry,
     customModelSelected,
     supportsThinking,
     providerDisplayName,

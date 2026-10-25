@@ -4,14 +4,16 @@ import { computed, ref, useTemplateRef } from 'vue'
 import type { AIProviderID } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue/i18n'
 
-import { usePiSetup } from '@/app/ai/agents/setup/use'
+import { useCodingAgentSetup, usePiSetup } from '@/app/ai/agents/setup/use'
 import { useModelProfileFeedback } from '@/app/ai/models/settings/profile-editor/feedback'
 import { useProfileSignIn } from '@/app/ai/models/settings/profile-editor/sign-in'
 import { useModelProfileEditor } from '@/app/ai/models/settings/profile-editor/use'
 import { thinkingLevelOptions as buildThinkingLevelOptions } from '@/app/ai/models/thinking'
 import { useSettingsFormGuard } from '@/app/settings/navigation/use'
+import AgentSetup from '@/components/settings/agents/AgentSetup.vue'
 import PiSetup from '@/components/settings/agents/PiSetup.vue'
 import { focusInvalidField } from '@/components/settings/layout/focus'
+import SettingsDisclosure from '@/components/settings/layout/SettingsDisclosure.vue'
 import SettingsPage from '@/components/settings/layout/SettingsPage.vue'
 import SettingsSaveFeedback from '@/components/settings/layout/SettingsSaveFeedback.vue'
 import SettingsSection from '@/components/settings/layout/SettingsSection.vue'
@@ -22,7 +24,6 @@ import ProviderSettingsField from '@/components/settings/provider/ProviderSettin
 import ProviderSettingsInput from '@/components/settings/provider/ProviderSettingsInput.vue'
 import ProviderSettingsKeyField from '@/components/settings/provider/ProviderSettingsKeyField.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
-import AppCollapsible from '@/components/ui/collapsible/AppCollapsible.vue'
 import { AppConfirmationDialog } from '@/components/ui/dialog'
 import AppInput from '@/components/ui/input/AppInput.vue'
 import AppCombobox from '@/components/ui/select/AppCombobox.vue'
@@ -44,6 +45,10 @@ const {
   providerDef,
   isACP,
   isHarness,
+  isCloud,
+  cloudWorkspaces,
+  cloudState,
+  retryCloud,
   supportsThinking,
   modelOptions,
   selectedModelValue,
@@ -63,6 +68,7 @@ const {
   testConnection: runConnectionTest
 } = profile
 const pi = usePiSetup(isHarness)
+const codingAgent = useCodingAgentSetup(() => draft.providerID)
 const signIn = useProfileSignIn(keyInput)
 const customModelPlaceholder = computed(() =>
   isHarness.value ? (pi.state.value?.defaultModel ?? 'provider/model') : 'e.g. llama-3.3-70b'
@@ -71,7 +77,25 @@ const feedback = useModelProfileFeedback(profile, keyInput, settings)
 const { errors: fieldErrors } = feedback
 const busy = computed(() => saving.value || connectionTestStatus.value === 'testing')
 const thinkingLevelOptions = computed(() => buildThinkingLevelOptions(ai.value))
-useSettingsFormGuard({ dirty, busy, cancel: () => emit('done') })
+const cloudWorkspaceOptions = computed(() =>
+  cloudWorkspaces.value.map((workspace) => ({ value: workspace.id, label: workspace.name }))
+)
+const cloudNotice = computed(() => {
+  if (cloudState.value === 'unavailable') return ai.value.cloudAIUnavailable
+  if (cloudState.value === 'workspaces-failed') return ai.value.cloudAIWorkspacesFailed
+  if (cloudState.value === 'no-workspace') return ai.value.cloudAINoWorkspace
+  if (cloudState.value === 'catalog-failed') return ai.value.cloudAICatalogFailed
+  return null
+})
+useSettingsFormGuard({
+  dirty,
+  busy,
+  cancel: () => emit('done'),
+  crumb: {
+    parent: () => ai.value.modelsTitle,
+    title: () => (profileId ? ai.value.editModel : ai.value.addModel)
+  }
+})
 const CUSTOM_MODEL_VALUE = '__custom__'
 const advancedOpen = ref(Boolean(draft.customModelID.trim()))
 function updateProvider(id: AIProviderID) {
@@ -117,27 +141,26 @@ async function remove() {
     @submit.prevent="save"
   >
     <SettingsPage data-test-id="settings-model-editor">
-      <SettingsSection>
-        <template #title>{{ profileId ? ai.editModel : ai.addModel }}</template>
-        <template #description>{{ ai.modelEditorDescription }}</template>
-        <fieldset :disabled="busy" class="flex min-w-0 flex-col gap-3">
-          <ProviderSettingsField
-            v-slot="{ control }"
-            :label="ai.modelName"
-            :hint="settings.modelNameHint"
-            :error="fieldErrors.name"
-            @blur="feedback.blur('name')"
-          >
-            <AppInput
-              ref="nameInput"
-              v-bind="control"
-              v-model="draft.name"
-              :aria-label="ai.modelName"
-              :placeholder="modelDisplayName"
-              size="sm"
-            />
-          </ProviderSettingsField>
+      <fieldset :disabled="busy" class="flex min-w-0 flex-col gap-6">
+        <ProviderSettingsField
+          v-slot="{ control }"
+          :label="ai.modelName"
+          :hint="settings.modelNameHint"
+          :error="fieldErrors.name"
+          @blur="feedback.blur('name')"
+        >
+          <AppInput
+            ref="nameInput"
+            v-bind="control"
+            v-model="draft.name"
+            :aria-label="ai.modelName"
+            :placeholder="modelDisplayName"
+            size="sm"
+          />
+        </ProviderSettingsField>
 
+        <SettingsSection>
+          <template #title>{{ ai.modelConfiguration }}</template>
           <ProviderSettingsField :label="ai.provider">
             <ProviderSelect
               :model-value="draft.providerID"
@@ -146,6 +169,22 @@ async function remove() {
               @update:model-value="updateProvider"
             />
           </ProviderSettingsField>
+          <div
+            v-if="codingAgent.agent.value && codingAgent.state.value"
+            class="flex flex-col gap-2"
+            data-test-id="settings-agent-setup"
+          >
+            <AgentSetup
+              :agent="codingAgent.agent.value"
+              :setup="codingAgent.state.value"
+              @check="codingAgent.check()"
+              @install-agent="codingAgent.install()"
+              @install-bridge="codingAgent.installBridge()"
+              @sign-in="codingAgent.signIn()"
+              @cancel-sign-in="codingAgent.cancelSignIn()"
+              @submit-sign-in-code="codingAgent.submitSignInCode($event)"
+            />
+          </div>
 
           <div v-if="pi.state.value" class="flex flex-col gap-2" data-test-id="settings-pi-setup">
             <PiSetup
@@ -156,14 +195,38 @@ async function remove() {
             />
           </div>
 
-          <template v-if="!isACP">
-            <div class="flex items-center gap-2 pt-1">
-              <p class="text-[10px] font-medium uppercase tracking-wide text-muted">
-                {{ ai.modelConfiguration }}
-              </p>
-              <div class="h-px flex-1 bg-border" />
-            </div>
+          <div
+            v-if="isCloud && cloudNotice"
+            class="flex items-start justify-between gap-2"
+            data-test-id="settings-cloud-ai-notice"
+          >
+            <p class="text-[11px] leading-relaxed text-muted">{{ cloudNotice }}</p>
+            <AppButton
+              v-if="cloudState === 'catalog-failed' || cloudState === 'workspaces-failed'"
+              variant="outline"
+              size="sm"
+              @click="retryCloud"
+            >
+              {{ ai.retryRequest }}
+            </AppButton>
+          </div>
 
+          <ProviderSettingsField
+            v-if="isCloud && cloudWorkspaceOptions.length"
+            :label="ai.cloudWorkspace"
+            :hint="ai.cloudWorkspaceHint"
+            :error="fieldErrors.cloudWorkspace"
+          >
+            <AppSelect
+              :model-value="draft.cloudWorkspaceId ?? ''"
+              :label="ai.cloudWorkspace"
+              :options="cloudWorkspaceOptions"
+              data-test-id="settings-cloud-ai-workspace"
+              @update:model-value="draft.cloudWorkspaceId = String($event)"
+            />
+          </ProviderSettingsField>
+
+          <template v-if="!isACP">
             <ProviderSettingsField
               v-if="modelOptions.length && !isHarness"
               v-slot="{ control }"
@@ -199,13 +262,12 @@ async function remove() {
                 :placeholder="customModelPlaceholder"
               />
             </ProviderSettingsField>
+          </template>
+        </SettingsSection>
 
-            <div class="flex items-center gap-2 pt-1">
-              <p class="text-[10px] font-medium uppercase tracking-wide text-muted">
-                {{ ai.connectionSettings }}
-              </p>
-              <div class="h-px flex-1 bg-border" />
-            </div>
+        <template v-if="!isACP">
+          <SettingsSection>
+            <template #title>{{ ai.connectionSettings }}</template>
 
             <ProviderSettingsField
               v-if="providerDef.supportsCustomBaseURL"
@@ -250,7 +312,7 @@ async function remove() {
               @sign-out="clearKey"
             />
             <ProviderSettingsKeyField
-              v-else
+              v-else-if="!isCloud"
               v-model="keyInput"
               :label="ai.apiKey"
               :saved="hasExistingKey"
@@ -273,19 +335,11 @@ async function remove() {
               :disabled="busy"
               @test="testConnection"
             />
-          </template>
+          </SettingsSection>
 
-          <AppCollapsible
-            v-if="!isACP"
-            v-model:open="advancedOpen"
-            :ui="{
-              root: 'rounded border border-border',
-              trigger: 'px-2.5 py-2 text-[11px] text-muted hover:text-surface',
-              icon: 'size-3'
-            }"
-          >
+          <SettingsDisclosure v-model:open="advancedOpen">
             <template #label>{{ ai.advancedModelSettings }}</template>
-            <div class="flex flex-col gap-3 border-t border-border p-2.5">
+            <div class="flex flex-col gap-3">
               <div>
                 <p class="text-[11px] font-medium text-surface">{{ ai.modelCapabilities }}</p>
                 <p class="mt-0.5 text-[10px] text-muted">
@@ -344,11 +398,11 @@ async function remove() {
                 </p>
               </div>
             </div>
-          </AppCollapsible>
+          </SettingsDisclosure>
+        </template>
 
-          <SettingsSaveFeedback :error="saveError" :result="saveResult" />
-        </fieldset>
-      </SettingsSection>
+        <SettingsSaveFeedback :error="saveError" :result="saveResult" />
+      </fieldset>
 
       <template #footer>
         <AppButton v-if="canDelete" color="error" :disabled="busy" @click="deleteOpen = true">
