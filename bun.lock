@@ -221,6 +221,7 @@
         "@vue-email/components": "^0.0.21",
         "@vue-email/render": "^0.0.9",
         "better-auth": "1.7.7",
+        "bowser": "^2.14.1",
         "es-toolkit": "^1.52.0",
         "fflate": "^0.8.3",
         "hono": "^4.13.13",
@@ -261,6 +262,7 @@
         "@iconify/utils": "^3.1.4",
         "@open-pencil/design-jsx": "workspace:*",
         "@open-pencil/dom-css": "workspace:*",
+        "@open-pencil/drawio": "workspace:*",
         "@open-pencil/fig": "workspace:*",
         "@open-pencil/kiwi": "workspace:*",
         "@open-pencil/pen": "workspace:*",
@@ -283,6 +285,7 @@
         "nanoevents": "^9.1.0",
         "ofetch": "^1.5.1",
         "opentype.js": "^2.0.0",
+        "parse5": "^8.0.1",
         "pixelmatch": "^7.2.0",
         "pptxgenjs": "^4.0.1",
         "rbush": "^4.0.1",
@@ -406,6 +409,20 @@
         "@open-pencil/scene-graph": "workspace:*",
       },
     },
+    "packages/drawio": {
+      "name": "@open-pencil/drawio",
+      "version": "0.16.0",
+      "dependencies": {
+        "@xmldom/xmldom": "^0.9.12",
+        "fflate": "^0.8.3",
+        "js-base64": "^3.9.3",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "tsdown": "^0.22.14",
+        "typescript": "~5.8.3",
+      },
+    },
     "packages/emit": {
       "name": "@open-pencil/emit",
       "version": "0.16.0",
@@ -475,6 +492,7 @@
         "@ai-sdk/harness-pi": "1.0.140",
         "@ai-sdk/sandbox-just-bash": "1.0.138",
         "@earendil-works/pi-tui": "0.85.1",
+        "amaro": "1.2.2",
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
@@ -1616,6 +1634,8 @@
 
     "@open-pencil/dom-css": ["@open-pencil/dom-css@workspace:packages/dom-css"],
 
+    "@open-pencil/drawio": ["@open-pencil/drawio@workspace:packages/drawio"],
+
     "@open-pencil/emit": ["@open-pencil/emit@workspace:packages/emit"],
 
     "@open-pencil/emoji-metrics-tools": ["@open-pencil/emoji-metrics-tools@workspace:tools/generate/emoji-metrics"],
@@ -2685,6 +2705,8 @@
     "ajv-formats": ["ajv-formats@3.0.1", "", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="],
 
     "alien-signals": ["alien-signals@3.2.1", "", {}, "sha512-I8FjmltrfnDFoZedi5CG8DghVYNhzb/Ijluz7tCSJH0xpd0484Kowhbb1XDYOxfJpU1p5wnM2X54dA+IfGyD1g=="],
+
+    "amaro": ["amaro@1.2.2", "", {}, "sha512-H1ReZZ8Te6HHaWAy9171A/iWkGZOusKCtdzmh6EnTgluiNiAV9OSmUIN5rZI1TZnw6+NAUNz+n6pAWoJAHhRIQ=="],
 
     "ansi-colors": ["ansi-colors@4.1.3", "", {}, "sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw=="],
 

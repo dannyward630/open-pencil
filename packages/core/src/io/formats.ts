@@ -1,4 +1,5 @@
 import { sceneNodeToJSX, selectionToJSX } from '@open-pencil/design-jsx'
+import { isDrawIOExportFileName } from '@open-pencil/drawio'
 import {
   buildPenGraph,
   isDataURL,
@@ -11,6 +12,7 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import { drawIcon, iconify, type IconData, type IconProvider } from '#core/icons'
 import { layoutAuthoredNodes } from '#core/layout'
 
+import type { DrawIOExportTarget } from './formats/drawio/export'
 import { exportFigFile, parseFigFile } from './formats/fig'
 import type { PPTXExportOptions } from './formats/pptx'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
@@ -305,6 +307,77 @@ export const penFormat: IOFormatAdapter<'pen'> = {
   }
 }
 
+export const drawioFormat: IOFormatAdapter<'drawio'> = {
+  id: 'drawio',
+  label: 'draw.io Diagram',
+  role: 'interchange-document',
+  category: 'document',
+  extensions: ['drawio', 'dio'],
+  mimeTypes: ['application/vnd.jgraph.mxfile'],
+  support: {
+    readDocument: true,
+    writeDocument: true,
+    exportDocument: true,
+    exportPage: true,
+    exportSelection: true,
+    exportNode: true
+  },
+  exportOptions: FIXED_SIZE_EXPORT,
+  // A draw.io PNG or SVG export opens as its diagram when its name says it is one.
+  matchesFile(fileName, mimeType) {
+    const ext = lowerExt(fileName)
+    return (
+      ext === 'drawio' ||
+      ext === 'dio' ||
+      isDrawIOExportFileName(fileName) ||
+      mimeType === 'application/vnd.jgraph.mxfile'
+    )
+  },
+  async readDocument(input) {
+    const { readDrawIOBytes } = await import('@open-pencil/drawio')
+    const { drawioToSceneGraph } = await import('./formats/drawio')
+    const file = readDrawIOBytes(input.data)
+    if (!file) throw new Error('This file holds no draw.io diagram')
+    if (file.unreadable.length > 0) {
+      throw new Error(`Could not read the draw.io pages ${file.unreadable.join(', ')}`)
+    }
+    const graph = drawioToSceneGraph(file)
+    // draw.io stores label text, not the sizes it lays out to.
+    layoutAuthoredNodes(
+      graph,
+      graph.getPages().map((page) => page.id)
+    )
+    return { graph, sourceFormat: 'drawio' }
+  },
+  async writeDocument(graph) {
+    const pageIds = graph.getPages().map((page) => page.id)
+    return writeDrawIO(graph, { pageIds })
+  },
+  // A page or a selection goes as a one-page diagram; the document, every page.
+  async exportContent(request) {
+    if (request.target.scope === 'document') {
+      const pageIds = request.graph.getPages().map((page) => page.id)
+      return writeDrawIO(request.graph, { pageIds })
+    }
+    const target = resolveExportNodes(request)
+    if (!target) throw new Error('Nothing to export')
+    return writeDrawIO(request.graph, target)
+  }
+}
+
+/** Pages or layers as a draw.io file, loading the writer only when one is saved. */
+async function writeDrawIO(graph: SceneGraph, target: DrawIOExportTarget): Promise<ExportResult> {
+  const { writeDrawIOFile } = await import('@open-pencil/drawio')
+  const { sceneGraphToDrawIO } = await import('./formats/drawio')
+  return {
+    format: 'drawio',
+    mimeType: 'application/vnd.jgraph.mxfile',
+    extension: 'drawio',
+    data: writeDrawIOFile(sceneGraphToDrawIO(graph, target)),
+    encoding: 'utf8'
+  }
+}
+
 export const pngFormat = rasterFormat('PNG')
 export const jpgFormat = rasterFormat('JPG')
 export const webpFormat = rasterFormat('WEBP')
@@ -487,6 +560,7 @@ export const tailwindJSXFormat: IOFormatAdapter<'tailwind-jsx'> = {
 export const BUILTIN_IO_FORMATS = [
   figFormat,
   penFormat,
+  drawioFormat,
   pngFormat,
   jpgFormat,
   webpFormat,
