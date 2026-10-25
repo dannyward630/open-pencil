@@ -167,6 +167,38 @@ describe('color-contrast', () => {
     expect(lint(graph, 'color-contrast')).toEqual([])
   })
 
+  test('uses the ancestor fill when rotated sibling bounds overlap but the shapes do not', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const card = graph.createNode('FRAME', pageId, {
+      name: 'Card',
+      width: 320,
+      height: 320,
+      fills: solid(WHITE)
+    })
+    graph.createNode('VECTOR', card.id, {
+      name: 'Disjoint rotated background',
+      x: 170,
+      y: 170,
+      width: 100,
+      height: 100,
+      rotation: -45,
+      fills: solid(DARK_GREEN)
+    })
+    const label = graph.createNode('TEXT', card.id, {
+      name: 'Label',
+      text: 'Hello',
+      x: 50,
+      y: 50,
+      width: 100,
+      height: 100,
+      rotation: 45,
+      fills: solid(WHITE)
+    })
+
+    expect(lint(graph, 'color-contrast').map((message) => message.nodeId)).toEqual([label.id])
+  })
+
   test('uses the ancestor fill when sibling fills do not affect the text background', () => {
     const graph = new SceneGraph()
     const pageId = graph.getPages()[0].id

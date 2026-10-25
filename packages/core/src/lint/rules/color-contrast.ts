@@ -1,5 +1,5 @@
 import { colorToHex, contrastRatio } from '@open-pencil/scene-graph/color'
-import { rotatedBBox } from '@open-pencil/scene-graph/geometry'
+import { rotatedCorners } from '@open-pencil/scene-graph/geometry'
 
 import { defineRule } from '#core/lint/rule'
 import type { LintNode, RuleContext } from '#core/lint/types'
@@ -11,42 +11,96 @@ const LARGE_TEXT_PX = 24
 const LARGE_BOLD_TEXT_PX = 18.66
 const BOLD_WEIGHT = 700
 
-function overlapsTextBounds(node: LintNode, sibling: LintNode): boolean {
-  const text = rotatedBBox(node.x, node.y, node.width, node.height, node.rotation)
-  const background = rotatedBBox(
-    sibling.x,
-    sibling.y,
-    sibling.width,
-    sibling.height,
-    sibling.rotation
-  )
-  return (
-    text.left < background.right &&
-    text.right > background.left &&
-    text.top < background.bottom &&
-    text.bottom > background.top
+type Corners = ReturnType<typeof rotatedCorners>
+
+interface SiblingOrder {
+  indexById: Map<string, number>
+  backgrounds: { index: number; corners: Corners }[]
+}
+
+/** Built once per parent for a lint run, rather than once for each text child. */
+const siblingOrderCache = new WeakMap<RuleContext, WeakMap<LintNode, SiblingOrder>>()
+
+function nodeCorners(node: LintNode): Corners {
+  return rotatedCorners(
+    node.x + node.width / 2,
+    node.y + node.height / 2,
+    node.width / 2,
+    node.height / 2,
+    node.rotation
   )
 }
 
-/** Whether a filled sibling behind the text overlaps its bounds. */
+/** Separating-axis test for two rotated rectangles; edge contact is not an overlap. */
+function overlapsRotatedRectangles(a: Corners, b: Corners): boolean {
+  for (const corners of [a, b]) {
+    for (let edge = 0; edge < 2; edge++) {
+      const from = corners[edge]
+      const to = corners[edge + 1]
+      const axisX = from.y - to.y
+      const axisY = to.x - from.x
+      let aMin = Infinity
+      let aMax = -Infinity
+      let bMin = Infinity
+      let bMax = -Infinity
+      for (const point of a) {
+        const projection = point.x * axisX + point.y * axisY
+        aMin = Math.min(aMin, projection)
+        aMax = Math.max(aMax, projection)
+      }
+      for (const point of b) {
+        const projection = point.x * axisX + point.y * axisY
+        bMin = Math.min(bMin, projection)
+        bMax = Math.max(bMax, projection)
+      }
+      if (aMax <= bMin || bMax <= aMin) return false
+    }
+  }
+  return true
+}
+
+function isPaintedSibling(node: LintNode): boolean {
+  return (
+    node.type !== 'TEXT' &&
+    node.visible &&
+    node.opacity !== 0 &&
+    node.width > 0 &&
+    node.height > 0 &&
+    node.fills.some((fill) => fill.visible && fill.opacity > 0 && (fill.color?.a ?? 1) > 0)
+  )
+}
+
+function siblingOrder(parent: LintNode, context: RuleContext): SiblingOrder {
+  let parents = siblingOrderCache.get(context)
+  if (!parents) {
+    parents = new WeakMap()
+    siblingOrderCache.set(context, parents)
+  }
+  const cached = parents.get(parent)
+  if (cached) return cached
+
+  const siblings = context.getChildren(parent)
+  const indexById = new Map(siblings.map((sibling, index) => [sibling.id, index]))
+  const backgrounds = siblings.flatMap((sibling, index) =>
+    isPaintedSibling(sibling) ? [{ index, corners: nodeCorners(sibling) }] : []
+  )
+  const order = { indexById, backgrounds }
+  parents.set(parent, order)
+  return order
+}
+
+/** Whether an earlier painted sibling actually overlaps the text. */
 function hasOverlappingSiblingFill(node: LintNode, context: RuleContext): boolean {
   const parent = context.getParent(node)
-  if (!parent) return false
-  const siblings = context.getChildren(parent)
-  const nodeIndex = siblings.findIndex((sibling) => sibling.id === node.id)
-  if (nodeIndex <= 0) return false
+  if (!parent || node.width <= 0 || node.height <= 0) return false
+  const order = siblingOrder(parent, context)
+  const nodeIndex = order.indexById.get(node.id)
+  if (nodeIndex === undefined || nodeIndex <= 0) return false
 
-  for (let index = 0; index < nodeIndex; index++) {
-    const sibling = siblings[index]
-    if (
-      sibling.type === 'TEXT' ||
-      !sibling.visible ||
-      sibling.opacity === 0 ||
-      !sibling.fills.some((fill) => fill.visible && fill.opacity > 0 && (fill.color?.a ?? 1) > 0)
-    )
-      continue
-    if (!overlapsTextBounds(node, sibling)) continue
-    return true
+  const textCorners = nodeCorners(node)
+  for (const background of order.backgrounds) {
+    if (background.index >= nodeIndex) break
+    if (overlapsRotatedRectangles(textCorners, background.corners)) return true
   }
   return false
 }
