@@ -1,4 +1,4 @@
-import { pickBy } from 'es-toolkit'
+import { isEmptyObject, pickBy } from 'es-toolkit'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { getAxisAlignedWorldBounds, getWorldMatrix } from '@open-pencil/scene-graph/coordinate'
@@ -262,6 +262,18 @@ function descendants(scene: SceneGraph, node: SceneNode): SceneNode[] {
 }
 
 /**
+ * A vector's path scaled to its new size, as Figma's resize does. The stroke keeps its weight, so
+ * the saved stroke outline goes and the stroke draws from the scaled path, as when the path is set.
+ */
+function resizedVectorGeometry(node: SceneNode, width: number, height: number): Partial<SceneNode> {
+  if (node.type !== 'VECTOR') return {}
+  const path = { ...createResizeSnapshot(node), strokes: [], strokeGeometry: [] }
+  const geometry = scaledGeometryChanges(path, node.width, node.height, width, height)
+  if (isEmptyObject(geometry) || node.strokeGeometry.length === 0) return geometry
+  return { ...geometry, strokeGeometry: [] }
+}
+
+/**
  * Resizes a node keeping its top-left corner, as Figma's does, though it turns about its center.
  * `resize` places the layers inside by their constraints, as Figma's does, without making their
  * sizes overrides; `resizeWithoutConstraints` leaves them be, except in an instance. The groups around the node refit
@@ -284,10 +296,7 @@ function resizeNode(
     constrained || node.type === 'INSTANCE'
       ? new Map(descendants(scene, node).map((child) => [child.id, createResizeSnapshot(child)]))
       : new Map<string, ResizeSnapshot>()
-  const geometry =
-    node.type === 'VECTOR'
-      ? scaledGeometryChanges(createResizeSnapshot(node), size.width, size.height, width, height)
-      : {}
+  const geometry = resizedVectorGeometry(node, width, height)
   // Text given a size stops sizing itself to its content, as in Figma.
   const fixesText =
     node.type === 'TEXT' &&
