@@ -48,4 +48,41 @@ describe('SVG export background blur', () => {
       'SVG export cannot faithfully represent BACKGROUND_BLUR'
     )
   })
+
+  test('warns and skips visible backdrop blur when requested', () => {
+    const graph = new SceneGraph()
+    const page = graph.addPage('Synthetic backdrop test')
+    const node = graph.createNode('RECTANGLE', page.id, {
+      width: 160,
+      height: 96,
+      fills: [solidFill(0)],
+      effects: [
+        {
+          type: 'BACKGROUND_BLUR',
+          radius: 12,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          spread: 0
+        }
+      ]
+    })
+    const warnings: Array<{ code: string; nodeId: string; effect: string }> = []
+
+    const svg = renderNodesToSVG(graph, page.id, [node.id], {
+      colorSpace: 'srgb',
+      skipUnsupportedEffects: true,
+      onWarning: (warning) => warnings.push(warning)
+    })
+
+    expect(svg).toContain('<svg')
+    expect(svg).not.toContain('feGaussianBlur')
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        code: 'unsupported-effect',
+        effect: 'BACKGROUND_BLUR',
+        nodeId: node.id
+      })
+    ])
+  })
 })

@@ -41,6 +41,8 @@ export interface SVGExportContext {
   defIdCounter: number
   graph: SceneGraph
   colorSpace: RenderColorSpace
+  skipUnsupportedEffects?: boolean
+  onWarning?: (warning: SVGExportWarning) => void
   /** Starts every def id, so SVGs inlined on one page cannot reference each other's defs. */
   idPrefix?: string
   /** Paints drawn in `currentColor`, such as an icon's tinted paths, so CSS `color` sets them. */
@@ -48,6 +50,24 @@ export interface SVGExportContext {
   /** Measured line breaks. Without them, only explicit newlines start a new baseline. */
   textLayout?: SVGTextLayout
   fontAlias?: SVGFontAlias
+}
+
+export interface SVGExportWarning {
+  code: 'unsupported-effect'
+  effect: 'BACKGROUND_BLUR'
+  nodeId: string
+  nodeName: string
+  message: string
+}
+
+export class SVGUnsupportedEffectError extends Error {
+  readonly warnings: SVGExportWarning[]
+
+  constructor(warnings: SVGExportWarning[]) {
+    super(warnings.map((warning) => warning.message).join('\n'))
+    this.name = 'SVGUnsupportedEffectError'
+    this.warnings = warnings
+  }
 }
 
 export function nextDefId(ctx: SVGExportContext, prefix: string): string {
@@ -211,20 +231,32 @@ function createImagePattern(
 
 export function createFilterDef(
   effects: Effect[],
-  ctx: SVGExportContext
+  ctx: SVGExportContext,
+  node: SceneNode
 ): { id: string; node: SVGNode } | null {
   const visible = effects.filter((e) => e.visible)
   if (visible.length === 0) return null
-  if (visible.some((effect) => effect.type === 'BACKGROUND_BLUR')) {
-    throw new Error(
-      'SVG export cannot faithfully represent BACKGROUND_BLUR: SVG filters cannot sample the backdrop.'
-    )
+
+  const unsupported = visible.filter((effect) => effect.type === 'BACKGROUND_BLUR')
+  if (unsupported.length > 0) {
+    const warnings = unsupported.map((): SVGExportWarning => ({
+      code: 'unsupported-effect',
+      effect: 'BACKGROUND_BLUR',
+      nodeId: node.id,
+      nodeName: node.name,
+      message: `SVG export cannot faithfully represent BACKGROUND_BLUR on "${node.name}" (${node.id}); SVG filters cannot sample the backdrop.`
+    }))
+    if (!ctx.skipUnsupportedEffects) throw new SVGUnsupportedEffectError(warnings)
+    for (const warning of warnings) ctx.onWarning?.(warning)
   }
+
+  const supported = visible.filter((effect) => effect.type !== 'BACKGROUND_BLUR')
+  if (supported.length === 0) return null
 
   const id = nextDefId(ctx, 'fx')
   const primitives: SVGNode[] = []
 
-  for (const effect of visible) {
+  for (const effect of supported) {
     if (effect.type === 'DROP_SHADOW') {
       const stdDev = round(effect.radius / 2)
       primitives.push(
