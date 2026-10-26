@@ -235,6 +235,73 @@ describe('color-contrast', () => {
   })
 })
 
+describe('color-contrast over layers under the text', () => {
+  const BLACK = { r: 0, g: 0, b: 0, a: 1 }
+
+  /** A white card holding a dark background and, in a frame of its own, a label. */
+  function card(background: Partial<SceneNode>, label: SceneNode['fills']) {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const card = graph.createNode('FRAME', pageId, {
+      name: 'Card',
+      width: 240,
+      height: 120,
+      fills: solid(WHITE)
+    })
+    graph.createNode('RECTANGLE', card.id, {
+      name: 'Background',
+      width: 240,
+      height: 120,
+      fills: solid(DARK_GREEN),
+      ...background
+    })
+    const content = graph.createNode('FRAME', card.id, {
+      name: 'Content',
+      x: 24,
+      y: 24,
+      width: 192,
+      height: 72
+    })
+    const text = graph.createNode('TEXT', content.id, {
+      name: 'Label',
+      text: 'Hello',
+      width: 120,
+      height: 30,
+      fills: label
+    })
+    return { graph, text }
+  }
+
+  test('measures text against a layer under the frame that holds it', () => {
+    expect(lint(card({}, solid(WHITE)).graph, 'color-contrast')).toEqual([])
+
+    const { graph, text } = card({}, solid(BLACK))
+    const messages = lint(graph, 'color-contrast')
+    expect(messages.map((message) => message.nodeId)).toEqual([text.id])
+    expect(messages[0]?.data?.background).toBe('#193E33')
+  })
+
+  test('skips text a layer under it covers only in part', () => {
+    const { graph } = card({ width: 60 }, solid(WHITE))
+
+    expect(lint(graph, 'color-contrast')).toEqual([])
+  })
+
+  test('composites a translucent layer under the text over the card', () => {
+    const { graph, text } = card({ opacity: 0.1 }, solid(WHITE))
+    const messages = lint(graph, 'color-contrast')
+
+    expect(messages.map((message) => message.nodeId)).toEqual([text.id])
+    expect(messages[0]?.data?.background).toBe('#E8ECEB')
+  })
+
+  test('ignores a layer under the text that paints nothing', () => {
+    const { graph, text } = card({ width: 60, fills: [] }, solid(WHITE))
+
+    expect(lint(graph, 'color-contrast').map((message) => message.nodeId)).toEqual([text.id])
+  })
+})
+
 describe('color-contrast over translucent fills', () => {
   const DARK = { r: 0.1, g: 0.1, b: 0.1, a: 1 }
   const tint = (opacity: number): SceneNode['fills'] => [

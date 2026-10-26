@@ -1,5 +1,11 @@
 import { colorToHex, compositeOver, contrastRatio } from '@open-pencil/scene-graph/color'
-import type { Color } from '@open-pencil/scene-graph/primitives'
+import {
+  clipPolygon,
+  degToRad,
+  rotatedCorners,
+  rotatePoint
+} from '@open-pencil/scene-graph/geometry'
+import type { Color, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { defineRule } from '#core/lint/rule'
 import type { LintNode, RuleContext } from '#core/lint/types'
@@ -39,29 +45,109 @@ function opaque(color: Pick<Color, 'r' | 'g' | 'b'>): Color {
   return { ...color, a: 1 }
 }
 
+/** Layers whose box is painted edge to edge, so their fills cover whatever their box covers. */
+const BOX_TYPES = new Set(['FRAME', 'RECTANGLE', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'])
+
+/** The corners of a layer's box in its parent's space; layers turn around their centre. */
+function boxCorners(node: LintNode): Vector[] {
+  const halfWidth = node.width / 2
+  const halfHeight = node.height / 2
+  return rotatedCorners(
+    node.x + halfWidth,
+    node.y + halfHeight,
+    halfWidth,
+    halfHeight,
+    node.rotation
+  )
+}
+
+/** `points` in `container`'s space, moved to its parent's space. */
+function toParentSpace(points: Vector[], container: LintNode): Vector[] {
+  const rad = degToRad(container.rotation)
+  return points.map((point) => {
+    const turned = rotatePoint(point.x, point.y, container.width / 2, container.height / 2, rad)
+    return { x: turned.x + container.x, y: turned.y + container.y }
+  })
+}
+
+function area(polygon: Vector[]): number {
+  let twice = 0
+  for (const [index, point] of polygon.entries()) {
+    const next = polygon[(index + 1) % polygon.length]
+    twice += point.x * next.y - next.x * point.y
+  }
+  return Math.abs(twice) / 2
+}
+
+/** How much of the text's quad `layer` covers: none, all of it, or part. */
+function coverage(text: Vector[], layer: LintNode): 'none' | 'all' | 'part' {
+  const covered = area(clipPolygon(text, boxCorners(layer)) ?? [])
+  if (covered <= 0) return 'none'
+  return covered >= area(text) - 1e-6 ? 'all' : 'part'
+}
+
 /**
- * What the text sits on: the fills of its ancestors in paint order, translucent solid ones
- * composited over the nearest opaque one, which may sit under them on the same ancestor.
- * Undefined when no ancestor has an opaque fill, since what shows through a translucent fill
- * then is not part of the design, or when a gradient or image shows above it, since those are
- * not composited yet.
+ * Puts `paints` under the translucent `layers` collected so far: the backdrop once an opaque
+ * solid paint completes it, `null` when a gradient or image shows, since those are not
+ * composited yet, and `undefined` while everything collected is translucent.
+ */
+function paintUnder(
+  layers: SolidPaint[],
+  paints: LintNode['fills'],
+  opacity: number
+): Color | null | undefined {
+  // Fills paint in array order, so the last one is on top.
+  for (const paint of paints.toReversed()) {
+    if (!paint.visible || paint.opacity * opacity <= 0) continue
+    if (paint.type !== 'SOLID') return null
+    if (!isSolidPaint(paint)) continue
+    if (paint.opacity * opacity >= 1) {
+      return layers.reduceRight(
+        (bg, layer) => compositeOver(opaque(layer.color), bg, layer.opacity),
+        opaque(paint.color)
+      )
+    }
+    layers.push({ ...paint, opacity: paint.opacity * opacity })
+  }
+  return undefined
+}
+
+/** The children of `parent` painted before `child`, topmost first. */
+function layersBelow(parent: LintNode, child: LintNode, context: RuleContext): LintNode[] {
+  const siblings = context.getChildren(parent)
+  const index = siblings.findIndex((sibling) => sibling.id === child.id)
+  return siblings.slice(0, Math.max(index, 0)).toReversed()
+}
+
+/**
+ * What the text sits on, in paint order: at each ancestor, the layers painted before the
+ * branch holding the text, topmost first, then the ancestor's own fills. Translucent solid
+ * fills are composited over the nearest opaque one. Undefined when nothing opaque is under the
+ * text, since what shows through a translucent fill then is not part of the design; when a
+ * gradient or image shows above it; and when a layer under the text covers only part of it or
+ * is not a box, since the text then has more than one background.
  */
 function backdrop(node: LintNode, context: RuleContext): Color | undefined {
   const layers: SolidPaint[] = []
+  let text = boxCorners(node)
+  let branch = node
   for (let parent = context.getParent(node); parent; parent = context.getParent(parent)) {
-    // Fills paint in array order, so the last one is on top.
-    for (const paint of parent.fills.toReversed()) {
-      if (!paint.visible || paint.opacity <= 0) continue
-      if (paint.type !== 'SOLID') return undefined
-      if (!isSolidPaint(paint)) continue
-      if (paint.opacity >= 1) {
-        return layers.reduceRight(
-          (bg, layer) => compositeOver(opaque(layer.color), bg, layer.opacity),
-          opaque(paint.color)
-        )
-      }
-      layers.push(paint)
+    for (const layer of layersBelow(parent, branch, context)) {
+      if (!layer.visible || layer.opacity <= 0 || layer.type === 'TEXT') continue
+      const paints = layer.fills.some((paint) => paint.visible && paint.opacity > 0)
+      // A layer that paints nothing itself and holds no layers leaves the text as it was.
+      if (!paints && layer.childIds.length === 0) continue
+      const covers = coverage(text, layer)
+      if (covers === 'none') continue
+      if (covers === 'part' || !BOX_TYPES.has(layer.type) || layer.childIds.length > 0)
+        return undefined
+      const result = paintUnder(layers, layer.fills, layer.opacity)
+      if (result !== undefined) return result ?? undefined
     }
+    const result = paintUnder(layers, parent.fills, 1)
+    if (result !== undefined) return result ?? undefined
+    text = toParentSpace(text, parent)
+    branch = parent
   }
   return undefined
 }

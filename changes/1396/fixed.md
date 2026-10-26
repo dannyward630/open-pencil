@@ -1,1 +1,1 @@
-- Accessibility contrast lint avoids a definitive ratio when an overlapping sibling makes the visible text background ambiguous.
+- The color contrast lint rule measures text against the layers painted under it, such as a background shape beside the frame that holds the text, instead of the nearest filled ancestor, and skips text such a layer covers only in part.
