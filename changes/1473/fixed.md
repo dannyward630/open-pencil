@@ -1,1 +1,1 @@
-- The touch-target-size lint rule now checks individual controls inside plural-named groups with multiple children.
+- The touch-target-size lint rule checks the controls in a row named in the plural, such as `Footer links`, instead of reporting the row as one target.

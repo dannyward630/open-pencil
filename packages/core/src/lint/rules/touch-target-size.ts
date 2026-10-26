@@ -48,17 +48,14 @@ export default defineRule({
   },
   match: ['FRAME', 'COMPONENT', 'INSTANCE', 'RECTANGLE', 'ELLIPSE'],
   check(node, context) {
-    const parent = context.getParent(node)
-    const isControlGroup = isPluralOnlyControlGroup(node.name, node.childIds.length)
-    const parentIsControlGroup = parent
-      ? isPluralOnlyControlGroup(parent.name, parent.childIds.length)
-      : false
-    if (isControlGroup || (!isInteractive(node.name) && !parentIsControlGroup)) return
+    // A row of controls named in the plural is not one target; its controls are.
+    if (!isInteractive(node.name) || isPluralOnlyControlGroup(node.name, node.childIds.length))
+      return
     const config = context.getConfig() as { minSize?: number } | undefined
     const minSize = config?.minSize ?? DEFAULT_MIN_SIZE
     if (node.width >= minSize && node.height >= minSize) return
     // A control nested in another control (the icon of a button) is not its own target.
-    for (let ancestor = parent; ancestor; ancestor = context.getParent(ancestor)) {
+    for (let ancestor = context.getParent(node); ancestor; ancestor = context.getParent(ancestor)) {
       if (
         isInteractive(ancestor.name) &&
         !isPluralOnlyControlGroup(ancestor.name, ancestor.childIds.length)

@@ -175,7 +175,7 @@ describe('touch-target-size', () => {
     expect(messages[0]?.data).toEqual({ width: 60, height: 24, minSize: 44 })
   })
 
-  test('checks ordinary-named children of plural control groups', () => {
+  test('checks the controls in a row named in the plural, not the row', () => {
     const graph = new SceneGraph()
     const pageId = graph.getPages()[0].id
     const group = graph.createNode('FRAME', pageId, {
@@ -183,14 +183,13 @@ describe('touch-target-size', () => {
       width: 280,
       height: 20
     })
-    const tabs = [
-      graph.createNode('FRAME', group.id, { name: 'Home', width: 20, height: 20 }),
-      graph.createNode('FRAME', group.id, { name: 'Settings', width: 20, height: 20 })
-    ]
+    const first = graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 })
+    graph.createNode('RECTANGLE', group.id, { name: 'Divider', width: 1, height: 16 })
+    const second = graph.createNode('FRAME', group.id, { name: 'Link', width: 80, height: 20 })
 
     const messages = lint(graph, 'touch-target-size')
 
-    expect(messages.map((message) => message.nodeId)).toEqual(tabs.map((tab) => tab.id))
+    expect(messages.map((message) => message.nodeId)).toEqual([first.id, second.id])
   })
 
   test('keeps singularly named controls as targets even when they contain children', () => {
