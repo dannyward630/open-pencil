@@ -10,13 +10,16 @@ export {
   aiTokenSchema,
   aiUsageEntrySchema,
   aiUsagePageSchema,
+  aiUsageQuerySchema,
   aiWalletSchema,
+  CLOUD_AI_API_PATHS,
   CLOUD_AI_CONTRACT_VERSION,
   CLOUD_AI_JWKS_PATH,
   CLOUD_AI_TOKEN_AUDIENCE,
   cloudAIDiscoverySchema,
   cloudBillingDiscoverySchema,
   createAITokenSchema,
+  parseAIUsageQuery,
   parseCreateAIToken,
   type AICatalog,
   type AICreditBucket,
@@ -27,6 +30,7 @@ export {
   type AITokenClaims,
   type AIUsageEntry,
   type AIUsagePage,
+  type AIUsageQuery,
   type AIWallet,
   type CloudAIDiscovery,
   type CloudBillingDiscovery,
@@ -52,6 +56,7 @@ export {
   cloudDiscoverySchema,
   cloudEditorVersionSchema,
   cloudListingSchema,
+  cloudServerOrigin,
   parseCloudDiscovery,
   type CloudAuthentication,
   type CloudCapabilities,
@@ -189,7 +194,9 @@ export {
   cloudDocumentURL,
   cloudInvitationURL,
   cloudShareURL,
-  type CloudLinkKind
+  parseCloudLinkPath,
+  type CloudLinkKind,
+  type CloudLinkPathKind
 } from './links'
 export { CLOUD_PORTAL_PAGE_ROOTS, isCloudPortalPage } from './portal'
 export * from './versions'

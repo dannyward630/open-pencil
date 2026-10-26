@@ -22,7 +22,7 @@ import * as Strokes from '#core/canvas/strokes'
 import { drawIndividualSideStrokes } from '#core/canvas/strokes/sides'
 import type { TextEditor } from '#core/text/editor'
 
-const rendererMethods: ThisType<SkiaRenderer> = {
+const rendererMethods = {
   drawHoverHighlight(
     canvas: Canvas,
     graph: SceneGraph,
@@ -146,8 +146,8 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     Overlays.drawAutoLayoutHover(this, canvas, graph, hover)
   },
 
-  drawTextEditOverlay(canvas: Canvas, node: SceneNode, editor: TextEditor): void {
-    Overlays.drawTextEditOverlay(this, canvas, node, editor)
+  drawTextEditOverlay(canvas: Canvas, node: SceneNode, editor: TextEditor, outset = 0): void {
+    Overlays.drawTextEditOverlay(this, canvas, node, editor, outset)
   },
 
   drawNodeEditOverlay(
@@ -355,7 +355,9 @@ const rendererMethods: ThisType<SkiaRenderer> = {
   applyClippedBlur(canvas: Canvas, node: SceneNode, sigma: number, shape?: Path | null): void {
     Effects.applyClippedBlur(this, canvas, node, sigma, shape)
   }
-}
+} satisfies ThisType<SkiaRenderer>
+
+export type RendererDomainMethods = typeof rendererMethods
 
 export function installRendererDomainMethods(prototype: object): void {
   Object.assign(prototype, rendererMethods)

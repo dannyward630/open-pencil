@@ -11,6 +11,7 @@ export { createDefaultEditorSharedState } from './state/shared'
 export { editedGradient, editedGradientLayout } from './gradient-edit'
 export type { SelectionSpacing } from './alignment'
 export type { MovePlace } from './undo'
+export type { AttachModifiers } from './connectors/attach'
 export {
   replaceSelectionColor,
   selectionColors,
@@ -36,6 +37,13 @@ export type { PlayState } from './play/actions'
 export type { ShaderRasterizer } from './shaders/types'
 export type { ShaderPaintList } from './shaders/actions'
 export type { Editor } from './create'
+export type {
+  PageSwitchProgress,
+  PreparedPage,
+  PreparePageOptions,
+  SwitchPageOptions
+} from './pages'
+export type { ExposableComponentField } from './components/authoring/context'
 export type { VariableTokenFields } from './variables'
 export { reapplyInstanceComponentProperties } from './components/properties'
 export { createGuideActions } from './guides'

@@ -45,19 +45,13 @@ export const UNIT_TEST_GROUPS = {
   ],
   dom: [
     'packages/emit/tests',
+    'packages/drawio/tests',
     'packages/design-jsx/tests',
     'packages/dom-css/tests',
     'packages/pen/tests',
-    'tests/engine/dom-css',
-    'tests/engine/pen'
+    'tests/engine/dom-css'
   ],
-  fig: [
-    'packages/fig/tests',
-    'packages/kiwi/tests',
-    'tests/engine/figma',
-    'tests/engine/io',
-    'tests/engine/kiwi'
-  ],
+  fig: ['packages/fig/tests', 'packages/kiwi/tests', 'tests/engine/io', 'tests/engine/kiwi'],
   mcp: ['packages/mcp/tests', 'tests/engine/mcp'],
   render: ['tests/engine/render'],
   'scene-graph': [
@@ -139,7 +133,7 @@ async function listTestFilesInPath(path: string): Promise<string[]> {
     entries.map(async (entry) => {
       const childPath = join(path, entry.name)
       if (entry.isDirectory()) return listTestFilesInPath(childPath)
-      if (entry.isFile() && entry.name.endsWith('.test.ts')) return [normalizePath(childPath)]
+      if (entry.isFile() && /\.test\.tsx?$/.test(entry.name)) return [normalizePath(childPath)]
       return []
     })
   )

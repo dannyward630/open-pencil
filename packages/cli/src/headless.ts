@@ -1,12 +1,19 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
+import { dirname, resolve, sep } from 'node:path'
 
 import { SkiaRenderer } from '@open-pencil/core/canvas'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { populateAllFigPages, populateFigPage } from '@open-pencil/core/io/formats/fig'
 import { headlessHTMLReader } from '@open-pencil/core/io/formats/html/import'
 import { initCanvasKit } from '@open-pencil/core/io/formats/raster'
-import { computeAllLayouts, installTextMeasurer } from '@open-pencil/core/layout'
+import {
+  computeAllLayouts,
+  installTextMeasurer,
+  sizeAutoResizingText
+} from '@open-pencil/core/layout'
+import { prepareGraphFonts, type DocumentFontStatus } from '@open-pencil/core/text'
 import type { SceneGraph } from '@open-pencil/scene-graph'
+import { collectSceneMutation } from '@open-pencil/scene-graph/mutation-impact'
 
 import { printError } from '#cli/format'
 
@@ -17,9 +24,26 @@ export const CLI_IO_FORMATS = [...BUILTIN_IO_FORMATS, headlessHTMLReader]
 
 const io = new IORegistry(CLI_IO_FORMATS)
 
+/**
+ * Reads a file a document names relative to itself, only from the document's folder: a path that
+ * leaves it, through `..` or a link, reads nothing.
+ */
+function documentAssetReader(filePath: string) {
+  return async (path: string): Promise<Uint8Array | null> => {
+    const folder = await realpath(dirname(filePath))
+    const target = await realpath(resolve(folder, path)).catch(() => null)
+    if (!target?.startsWith(folder + sep)) return null
+    return new Uint8Array(await readFile(target))
+  }
+}
+
 export async function loadDocument(filePath: string): Promise<SceneGraph> {
   const bytes = new Uint8Array(await readFile(filePath))
-  const { graph } = await io.readDocument({ name: filePath, data: bytes })
+  const { graph } = await io.readDocument({
+    name: filePath,
+    data: bytes,
+    readAsset: documentAssetReader(filePath)
+  })
   graph.applyDerivedLayoutDuring(() => computeAllLayouts(graph))
   return graph
 }
@@ -44,6 +68,20 @@ export function measureTextHeadlessly(): Promise<void> {
     throw error
   })
   return textMeasurer
+}
+
+/**
+ * Measures the text an edit to `graph` lays out as `measureTextHeadlessly` does, in the fonts the
+ * document uses: a weight or family the measurer does not start with is otherwise measured in a
+ * stand-in, and the edited layer comes out taller or wider than the app draws it. Returns which
+ * of those fonts could not be loaded.
+ */
+export async function measureDocumentText(graph: SceneGraph): Promise<DocumentFontStatus> {
+  await measureTextHeadlessly()
+  return prepareGraphFonts(
+    graph,
+    graph.getPages(true).map((page) => page.id)
+  )
 }
 
 /** `--write` and `--output` for commands that change a headless document. */
@@ -113,4 +151,19 @@ export function requirePage(graph: SceneGraph, pageName?: string) {
     process.exit(1)
   }
   return page
+}
+
+/**
+ * Runs `edit` on `graph`, then loads the fonts the text it touched needs and sizes that text again
+ * in them. Text is sized as it is edited, before the fonts for new characters (Japanese in a
+ * Latin-only web font, say) can load, so without this it would save the size and glyphs of a
+ * stand-in.
+ */
+export async function editDocument<T>(graph: SceneGraph, edit: () => T | Promise<T>): Promise<T> {
+  const { result, impact } = await collectSceneMutation(graph, edit)
+  const textIds = [...impact.changedNodeIds].filter((id) => graph.getNode(id)?.type === 'TEXT')
+  if (textIds.length === 0) return result
+  await prepareGraphFonts(graph, textIds)
+  for (const id of textIds) sizeAutoResizingText(graph, id)
+  return result
 }
