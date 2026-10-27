@@ -1,4 +1,5 @@
 import { colorToHex, compositeOver, contrastRatio } from '@open-pencil/scene-graph/color'
+import { BLACK } from '@open-pencil/scene-graph/constants'
 import {
   clipPolygon,
   degToRad,
@@ -86,30 +87,57 @@ function coverage(text: Vector[], layer: LintNode): 'none' | 'all' | 'part' {
   return covered >= area(text) - 1e-6 ? 'all' : 'part'
 }
 
+interface Coat {
+  color: Color
+  /** How much of what lies under it the coat hides: 1 for opaque. */
+  alpha: number
+}
+
 /**
- * Puts `paints` under the translucent `layers` collected so far: the backdrop once an opaque
- * solid paint completes it, `null` when a gradient or image shows, since those are not
- * composited yet, and `undefined` while everything collected is translucent.
+ * A layer's fills composited over nothing, in paint order, as the renderer draws them before
+ * applying the layer's opacity; null when a gradient or image shows, since those are not
+ * composited yet.
  */
-function paintUnder(
-  layers: SolidPaint[],
+function flatten(paints: LintNode['fills']): Coat | null {
+  let coat: Coat = { color: { ...BLACK }, alpha: 0 }
+  let unresolved = false
+  for (const paint of paints) {
+    if (!paint.visible || paint.opacity <= 0) continue
+    if (!isSolidPaint(paint)) {
+      unresolved ||= paint.type !== 'SOLID'
+      continue
+    }
+    if (paint.opacity >= 1) {
+      coat = { color: opaque(paint.color), alpha: 1 }
+      unresolved = false
+      continue
+    }
+    // Over a partly covered coat the paint's share of the result is its opacity over the total.
+    const alpha = paint.opacity + coat.alpha * (1 - paint.opacity)
+    coat = { color: compositeOver(opaque(paint.color), coat.color, paint.opacity / alpha), alpha }
+  }
+  return unresolved ? null : coat
+}
+
+/**
+ * Puts a layer's fills, at the layer's `opacity`, under the translucent `coats` collected so
+ * far: the backdrop once that completes it with something opaque, `null` when a gradient or
+ * image shows, and `undefined` while everything collected is translucent.
+ */
+function coatUnder(
+  coats: Coat[],
   paints: LintNode['fills'],
   opacity: number
 ): Color | null | undefined {
-  // Fills paint in array order, so the last one is on top.
-  for (const paint of paints.toReversed()) {
-    if (!paint.visible || paint.opacity * opacity <= 0) continue
-    if (paint.type !== 'SOLID') return null
-    if (!isSolidPaint(paint)) continue
-    if (paint.opacity * opacity >= 1) {
-      return layers.reduceRight(
-        (bg, layer) => compositeOver(opaque(layer.color), bg, layer.opacity),
-        opaque(paint.color)
-      )
-    }
-    layers.push({ ...paint, opacity: paint.opacity * opacity })
+  const coat = flatten(paints)
+  if (!coat) return null
+  const alpha = coat.alpha * opacity
+  if (alpha <= 0) return undefined
+  if (alpha < 1) {
+    coats.push({ color: coat.color, alpha })
+    return undefined
   }
-  return undefined
+  return coats.reduceRight((bg, layer) => compositeOver(layer.color, bg, layer.alpha), coat.color)
 }
 
 /** The children of `parent` painted before `child`, topmost first. */
@@ -128,7 +156,7 @@ function layersBelow(parent: LintNode, child: LintNode, context: RuleContext): L
  * is not a box, since the text then has more than one background.
  */
 function backdrop(node: LintNode, context: RuleContext): Color | undefined {
-  const layers: SolidPaint[] = []
+  const coats: Coat[] = []
   let text = boxCorners(node)
   let branch = node
   for (let parent = context.getParent(node); parent; parent = context.getParent(parent)) {
@@ -141,10 +169,10 @@ function backdrop(node: LintNode, context: RuleContext): Color | undefined {
       if (covers === 'none') continue
       if (covers === 'part' || !BOX_TYPES.has(layer.type) || layer.childIds.length > 0)
         return undefined
-      const result = paintUnder(layers, layer.fills, layer.opacity)
+      const result = coatUnder(coats, layer.fills, layer.opacity)
       if (result !== undefined) return result ?? undefined
     }
-    const result = paintUnder(layers, parent.fills, 1)
+    const result = coatUnder(coats, parent.fills, 1)
     if (result !== undefined) return result ?? undefined
     text = toParentSpace(text, parent)
     branch = parent

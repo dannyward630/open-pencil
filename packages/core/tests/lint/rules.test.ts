@@ -295,6 +295,16 @@ describe('color-contrast over layers under the text', () => {
     expect(messages[0]?.data?.background).toBe('#E8ECEB')
   })
 
+  test('applies a layer\'s opacity after compositing its fills', () => {
+    // Black over white at half opacity is mid gray, not each fill at half strength.
+    const fills = [...solid(WHITE), ...solid(BLACK)]
+    const { graph, text } = card({ fills, opacity: 0.5 }, solid(WHITE))
+    const messages = lint(graph, 'color-contrast')
+
+    expect(messages.map((message) => message.nodeId)).toEqual([text.id])
+    expect(messages[0]?.data?.background).toBe('#808080')
+  })
+
   test('ignores a layer under the text that paints nothing', () => {
     const { graph, text } = card({ width: 60, fills: [] }, solid(WHITE))
 
