@@ -38,7 +38,7 @@ describe('export_svg', () => {
 
     await expect(exportSVG.execute(figma, args)).resolves.toMatchObject({
       canSkipUnsupportedEffects: true,
-      retryWith: { skip_unsupported_effects: true },
+      retryWith: { ids: [node.id], skip_unsupported_effects: true },
       unsupportedEffects: [expect.objectContaining({ effect: 'BACKGROUND_BLUR', nodeId: node.id })]
     })
   })
