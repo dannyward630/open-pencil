@@ -7,6 +7,7 @@ import { usePortal } from '@/app/cloud-portal/context'
 import { usePortalFailureMessages } from '@/app/cloud-portal/failure'
 import { portalURL } from '@/app/cloud-portal/navigation'
 import { usePortalAction, usePortalLoad } from '@/app/cloud-portal/state'
+import { portalToast } from '@/app/cloud-portal/toast'
 import { formatDate } from '@/app/i18n/date'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import { useHeldContent } from '@/components/ui/overlay/held'
@@ -15,6 +16,8 @@ import PortalAccountSecurity from '../account/PortalAccountSecurity.vue'
 import PortalAuthenticatorSetup from '../account/PortalAuthenticatorSetup.vue'
 import PortalPasswordDialog from '../account/PortalPasswordDialog.vue'
 import PortalRecoveryCodes from '../account/PortalRecoveryCodes.vue'
+import PortalLoadAlert from '../layout/PortalLoadAlert.vue'
+import PortalPageSkeleton from '../layout/PortalPageSkeleton.vue'
 import type { PortalSignInMethod } from '../types'
 
 /** The signed-in person's sign-in methods and second steps, with every change they can make. */
@@ -34,7 +37,6 @@ const security = usePortalLoad(async () => {
 const methods = computed(() => security.data.value?.methods ?? null)
 const mfa = computed(() => security.data.value?.mfa ?? null)
 const passkeys = computed(() => security.data.value?.passkeys ?? [])
-const notice = ref<string | null>(null)
 
 type PasswordStep =
   | 'change'
@@ -70,7 +72,6 @@ const minimum = computed(
 
 /** One change from the page, then what the page shows read again. */
 const change = usePortalAction(async (work: () => Promise<unknown>) => {
-  notice.value = null
   await work()
   await security.reload()
 })
@@ -129,11 +130,7 @@ const passwordAction = usePortalAction(
 )
 
 const busy = computed(
-  () =>
-    security.loading.value ||
-    change.busy.value ||
-    passwordAction.busy.value ||
-    verifyAction.busy.value
+  () => change.busy.value || passwordAction.busy.value || verifyAction.busy.value
 )
 const passwordError = computed(() => (passwordStep.value ? passwordAction.error.value : null))
 const passwordShown = useHeldContent(passwordStep)
@@ -141,10 +138,7 @@ const passwordErrorShown = useHeldContent(passwordError, () => passwordStep.valu
 const setupShown = useHeldContent(setupURI)
 const codesShown = useHeldContent(recoveryCodes)
 const error = computed(
-  () =>
-    change.error.value ??
-    (passwordStep.value ? null : passwordAction.error.value) ??
-    security.error.value
+  () => change.error.value ?? (passwordStep.value ? null : passwordAction.error.value)
 )
 
 function link(provider: PortalSignInMethod) {
@@ -174,7 +168,7 @@ function changePassword() {
   if (!email) return
   void change.run(async () => {
     const result = await portal.auth.requestPasswordReset(email, portalURL('/auth/reset-password'))
-    if (result.ok) notice.value = messages.value.passwordResetSent
+    if (result.ok) portalToast.info(messages.value.passwordResetSent)
     else change.fail(failures.failure(result.failure))
   })
 }
@@ -202,9 +196,13 @@ function addPasskey() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex max-w-2xl flex-col gap-4" :aria-busy="security.loading.value || undefined">
+    <PortalLoadAlert
+      v-if="security.error.value"
+      :error="security.error.value"
+      @retry="security.reload()"
+    />
     <AppAlert v-if="error" tone="error" :heading="messages.errorTitle" :description="error" />
-    <AppAlert v-if="notice" tone="success" :heading="notice" />
     <PortalAccountSecurity
       v-if="methods && mfa"
       :methods="linkedMethods"
@@ -229,6 +227,7 @@ function addPasskey() {
       @add-passkey="addPasskey"
       @remove-passkey="(id) => change.run(() => portal.api.deletePasskey(id))"
     />
+    <PortalPageSkeleton v-else-if="security.status.value === 'loading'" :groups="[2, 2, 1]" />
 
     <PortalPasswordDialog
       :open="passwordStep !== null"

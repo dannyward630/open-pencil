@@ -21,9 +21,12 @@ export const menuMessageDefaults = {
   exportSelectionAsPNG: 'Export selection as PNG',
   exportSelectionAsSVG: 'Export selection as SVG',
   exportSelectionAsPPTX: 'Export selection as PPTX',
+  exportSelectionAsDrawIO: 'Export selection as draw.io',
   exportSelectionAsFig: 'Export selection as .fig',
   autosave: 'Auto-save to local file',
   closeTab: 'Close tab',
+  selectPreviousTab: 'Select previous tab',
+  selectNextTab: 'Select next tab',
 
   copy: 'Copy',
   paste: 'Paste',

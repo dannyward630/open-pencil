@@ -4,6 +4,7 @@ Renderer, layout, editor, Figma API, tools, clipboard, vector conversion, and do
 
 - The root entry is the editor (`createEditor` and its types); every other domain is a subpath listed in `packages/core/package.json` `exports`. Add a subpath there rather than deep-importing, and never re-export another package's names.
 - CanvasKit runtime loading is centralized in `@open-pencil/core/canvaskit`. Headless raster export may dynamically load `canvaskit-wasm/full`; elsewhere `import type` and pass CanvasKit in.
+- Node-only helpers live under `@open-pencil/core/node/*`, which nothing browser code imports. Files the CLI, MCP server, and harness replace are written with `writeFileAtomic` from `@open-pencil/core/node/fs` rather than a hand-rolled temporary file and rename; only a document saved in place follows a symlink (`packages/core/tests/node/fs.test.ts`).
 - Drawing and input share preview-aware geometry through `@open-pencil/core/geometry`, built on Scene Graph matrices. Use it for world/screen transforms, inverses, bounds, and handle placement.
 - Content an author wrote (design JSX, HTML, `.pen`) gets its sizes and positions from `layoutAuthoredNodes` in `packages/core/src/layout.ts`, which measures text that resizes to its content wherever it sits and then lays out the pages involved; renderers and readers of authored formats call it, while `.fig` keeps the geometry it stores (`packages/core/tests/layout/authored.test.ts`).
 - `.pen` documents draw as pen.dev draws them. `bun tools/generate/visual-oracles/src/cli.ts compare pen` exports every frame of the document open in pen.dev into `tests/fixtures/pen-oracles/` with the icons and fonts it uses; a new reading rule adds a probe frame there and a threshold to its `manifest.json` (`packages/core/tests/io/formats/pen/oracle.test.ts`).
@@ -16,6 +17,7 @@ Renderer, layout, editor, Figma API, tools, clipboard, vector conversion, and do
 - `@open-pencil/yoga-layout` supplies both flexbox and CSS Grid.
 - Recompute layout after demo creation and for each materialized or imported page; scope computation to the affected page or subtree where possible.
 - The first Hug/Fill dimension mutation switches only that axis to Fixed; focus is non-destructive, and mode/value changes share one undo transaction.
+- Arranging layers runs through `packages/core/src/layout/arrange/`: `arrangeBoxes` runs an ELK layout (spread, compact, pack, flow, tree, radial, network), loaded on first use, `applyArrangement` moves the layers that draw it and joins their connectors, routing them when they flow, and `arrangeLayers` does both for layers already on a page, finding the connectors between them; importers and tools that arrange layers go through them, and connectors that pass through stored bend points use `bendConnectorThrough` (`packages/core/tests/layout/arrange/layers.test.ts`).
 - A shape with text fits itself to its label before its auto layout runs: it grows from its given size only while the label needs room, and layout never changes that given size (`packages/core/tests/layout/generated/shape-with-text.test.ts`).
 
 ## Components and instances

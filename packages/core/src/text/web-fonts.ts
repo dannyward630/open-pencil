@@ -4,6 +4,12 @@ import type { FontFaceData, RemoteFontSource, ResolveFontResult } from 'unifont'
 import { parseFontStyle } from '@open-pencil/scene-graph/font-style'
 
 import { IS_BROWSER } from '#core/constants'
+import {
+  ARABIC_CHARACTER,
+  HAN_CHARACTER,
+  HANGUL_CHARACTER,
+  KANA_CHARACTER
+} from '#core/text/fallbacks'
 import type { FamilyFace } from '#core/text/font/faces'
 import { sfntFont } from '#core/text/font/woff2'
 import {
@@ -67,10 +73,10 @@ export function normalizedCoverageText(text: string): string {
 
 export function webFontSubsetsForText(text: string): string[] {
   const subsets = new Set(DEFAULT_WEB_FONT_SUBSETS)
-  if (/\p{Script=Arabic}/u.test(text)) subsets.add('arabic')
-  if (/\p{Script=Hangul}/u.test(text)) subsets.add('korean')
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) subsets.add('japanese')
-  if (/\p{Script=Han}/u.test(text)) {
+  if (ARABIC_CHARACTER.test(text)) subsets.add('arabic')
+  if (HANGUL_CHARACTER.test(text)) subsets.add('korean')
+  if (KANA_CHARACTER.test(text)) subsets.add('japanese')
+  if (HAN_CHARACTER.test(text)) {
     subsets.add('chinese-simplified')
     subsets.add('chinese-traditional')
     subsets.add('japanese')
@@ -114,11 +120,41 @@ function familyFacesOf(result: ResolveFontResult): FamilyFace[] {
   return [...faces.values()]
 }
 
-function resolvedRemoteFaces(result: ResolveFontResult): Array<{
+/** Whether a face's `unicode-range` (`U+3000-303F`, `U+4E??`) holds `codePoint`. */
+function inUnicodeRange(range: readonly string[], codePoint: number): boolean {
+  return range.some((part) => {
+    const [start = '', end = start] = part.trim().replace(/^U\+/iu, '').split('-')
+    const low = Number.parseInt(start.replaceAll('?', '0'), 16)
+    const high = Number.parseInt(end.replaceAll('?', 'F'), 16)
+    return codePoint >= low && codePoint <= high
+  })
+}
+
+/**
+ * The faces to download for `characters`: those whose `unicode-range` holds one of them, as a
+ * browser picks the files of a split family. A CJK family comes in a hundred or more such shards.
+ * Without characters, every face; when no range holds one, such as an emoji asked of a text
+ * family, only the first face, the provider's default subset, so the family still loads.
+ */
+function facesForCharacters(result: ResolveFontResult, characters: string): FontFaceData[] {
+  const codePoints = Array.from(characters, (character) => character.codePointAt(0) ?? 0)
+  if (codePoints.length === 0) return result.fonts
+  const covering = result.fonts.filter(
+    (face) =>
+      !face.unicodeRange ||
+      codePoints.some((codePoint) => inUnicodeRange(face.unicodeRange ?? [], codePoint))
+  )
+  return covering.length > 0 ? covering : result.fonts.slice(0, 1)
+}
+
+function resolvedRemoteFaces(
+  result: ResolveFontResult,
+  characters: string
+): Array<{
   source: RemoteFontSource
   init?: RequestInit
 }> {
-  const candidates = result.fonts.flatMap((face) => {
+  const candidates = facesForCharacters(result, characters).flatMap((face) => {
     const source = preferredRemoteSource(face)
     return source ? [{ source, init: face.meta?.init, priority: face.meta?.priority ?? 0 }] : []
   })
@@ -445,7 +481,7 @@ export class WebFontResolver {
         signal
       )
       signal?.throwIfAborted()
-      const faces = resolvedRemoteFaces(result)
+      const faces = resolvedRemoteFaces(result, characters)
       const buffers = await Promise.all(
         faces.map(async ({ source, init }) => {
           const response = await this.fetchRemote(source.url, { ...init, signal })

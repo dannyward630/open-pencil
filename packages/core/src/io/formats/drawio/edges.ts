@@ -1,6 +1,5 @@
 import type { DrawIOCell, DrawIOStyle } from '@open-pencil/drawio'
 import type {
-  ConnectorControlPoint,
   ConnectorEndpoint,
   ConnectorLabelPosition,
   ConnectorLineType,
@@ -11,16 +10,15 @@ import type {
 } from '@open-pencil/scene-graph'
 import {
   boundEndpoint,
-  connectorRoute,
   connectorSublayers,
   createConnector,
-  curveControlPoints,
-  curveMidpoint,
-  dragCurve,
   freeEndpoint,
   layoutConnector
 } from '@open-pencil/scene-graph/connectors'
+import { getAxisAlignedBoundsInParent } from '@open-pencil/scene-graph/coordinate'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
+
+import { bendConnectorThrough } from '#core/layout/arrange/routes'
 
 import { readLabel } from './label'
 import { dashOf, labelFields, labelFormat, lineColor } from './paint'
@@ -138,13 +136,27 @@ export function createEdge(
  * edge stores when it joins nothing.
  */
 /**
- * The side of `box` that faces `toward`, as an edge bent through a point leaves or enters by the
- * side that point lies beyond; null for a point over the box.
+ * The side of `box` that faces `toward`, as an edge bent through a point leaves or enters by; null
+ * for a point over the box. An elbow runs square to the side the point lies beyond; a curve
+ * leaves by the side a line from the box's centre to the point crosses, where draw.io ends one
+ * that names no point on the layer.
  */
 function sideFacing(
   box: Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>,
-  toward: Vector
+  toward: Vector,
+  curved: boolean
 ): ConnectorMagnet | null {
+  const over =
+    toward.x >= box.x &&
+    toward.x <= box.x + box.width &&
+    toward.y >= box.y &&
+    toward.y <= box.y + box.height
+  if (curved && !over) {
+    const dx = toward.x - (box.x + box.width / 2)
+    const dy = toward.y - (box.y + box.height / 2)
+    if (Math.abs(dx) * box.height >= Math.abs(dy) * box.width) return dx > 0 ? 'RIGHT' : 'LEFT'
+    return dy > 0 ? 'BOTTOM' : 'TOP'
+  }
   if (toward.x > box.x + box.width) return 'RIGHT'
   if (toward.x < box.x) return 'LEFT'
   if (toward.y < box.y) return 'TOP'
@@ -157,7 +169,7 @@ function endpointOf(
   layerOf: (cellId: string) => string | undefined,
   edge: DrawIOCell,
   end: 'source' | 'target',
-  straight: boolean
+  lineType: ConnectorLineType
 ): ConnectorEndpoint {
   const cellId = edge[end]
   const nodeId = cellId ? layerOf(cellId) : undefined
@@ -175,36 +187,18 @@ function endpointOf(
     }
     const { points } = edge.geometry
     const toward = end === 'source' ? points.at(0) : points.at(-1)
-    // Both share the edge's parent's axes when the layer is a sibling of the edge.
-    const facing =
-      toward && node.parentId === layerOf(edge.parent) ? sideFacing(node, toward) : null
-    return boundEndpoint(node.id, straight ? 'CENTER' : (facing ?? 'AUTO'))
+    // The point is in the edge's parent's axes, so the layer's box is taken there too, for a
+    // layer nested deeper than the edge as much as for a sibling.
+    const edgeParentId = layerOf(edge.parent)
+    const box =
+      node.parentId === edgeParentId || !edgeParentId
+        ? node
+        : getAxisAlignedBoundsInParent([node], edgeParentId, graph)
+    const facing = toward ? sideFacing(box, toward, lineType === 'CURVED') : null
+    return boundEndpoint(node.id, lineType === 'STRAIGHT' ? 'CENTER' : (facing ?? 'AUTO'))
   }
   const point = end === 'source' ? edge.geometry.sourcePoint : edge.geometry.targetPoint
   return freeEndpoint(point?.x ?? 0, point?.y ?? 0)
-}
-
-/**
- * The control lines an elbow takes to run through an edge's bend points in turn: across to each
- * point, then along to it, starting square to the side the connector leaves by.
- */
-function elbowThrough(points: Vector[], leavesAcross: boolean): ConnectorControlPoint[] {
-  const controls: ConnectorControlPoint[] = []
-  for (const point of points) {
-    const vertical: ConnectorControlPoint = { position: { ...point }, direction: 'VERTICAL' }
-    const horizontal: ConnectorControlPoint = { position: { ...point }, direction: 'HORIZONTAL' }
-    // A connector leaving sideways runs across to the point first.
-    const pair = leavesAcross ? [vertical, horizontal] : [horizontal, vertical]
-    for (const control of pair) {
-      const last = controls.at(-1)
-      if (last?.direction === control.direction) {
-        last.position = control.position
-        continue
-      }
-      controls.push(control)
-    }
-  }
-  return controls
 }
 
 /**
@@ -217,10 +211,10 @@ export function bindEdge(
   { connector, edge, labels }: PendingEdge,
   layerOf: (cellId: string) => string | undefined
 ): DrawIOCell[] {
-  const straight = connector.connectorLineType === 'STRAIGHT'
+  const lineType = connector.connectorLineType
   graph.updateNode(connector.id, {
-    connectorStart: endpointOf(graph, layerOf, edge, 'source', straight),
-    connectorEnd: endpointOf(graph, layerOf, edge, 'target', straight)
+    connectorStart: endpointOf(graph, layerOf, edge, 'source', lineType),
+    connectorEnd: endpointOf(graph, layerOf, edge, 'target', lineType)
   })
   const own = edge.value ? [edge] : []
   const all = [...own, ...labels]
@@ -241,37 +235,6 @@ export function bindEdge(
     graph.updateNode(connector.id, { connectorLabelPosition: labelPositionOf(at) })
   }
   layoutConnector(graph, connector)
-  routeThroughPoints(graph, connector, edge.geometry.points)
+  bendConnectorThrough(graph, connector, edge.geometry.points)
   return extra
-}
-
-/** Bends an elbow or a curve through an edge's points, in the connector's parent's axes. */
-function routeThroughPoints(graph: SceneGraph, connector: SceneNode, points: Vector[]) {
-  if (points.length === 0) return
-  const node = graph.getNode(connector.id)
-  const route = node ? connectorRoute(graph, node) : null
-  if (!node || !route) return
-  const local = (point: Vector) => ({ x: point.x - node.x, y: point.y - node.y })
-  if (node.connectorLineType === 'CURVED') {
-    const curve = route.pieces.at(0)
-    if (!curve) return
-    // The curve bends so its middle passes the middle bend point.
-    const through = points[Math.floor(points.length / 2)]
-    const middle = curveMidpoint(curve)
-    const [first, second] = dragCurve(curveControlPoints(curve), {
-      x: through.x - middle.x,
-      y: through.y - middle.y
-    })
-    graph.updateNode(node.id, { connectorCurveHandles: [local(first), local(second)] })
-  } else {
-    const across = route.sides[0] === 'LEFT' || route.sides[0] === 'RIGHT'
-    graph.updateNode(node.id, {
-      connectorControlPoints: elbowThrough(points, across).map((control) => ({
-        ...control,
-        position: local(control.position)
-      }))
-    })
-  }
-  const updated = graph.getNode(node.id)
-  if (updated) layoutConnector(graph, updated)
 }

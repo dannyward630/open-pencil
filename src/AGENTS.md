@@ -33,6 +33,7 @@ Root Tauri/Vite app. Services and state live under `src/app/**`, views under `sr
 - An open Cloud document is live in its relay room, and only the elected saver (`electCloudSaver` in `src/app/cloud/rooms/live.ts`) uploads its revisions; guests from a link never save (`tests/integration/collab/cloud-relay.test.ts`).
 - The Cloud portal is its own entry (`cloud.html`, `src/cloud/`, `src/views/cloud/`) that the Cloud server serves beside the editor (`bun run build:cloud`); it must not import editor sessions, CanvasKit, or `src/app/shell/**`, so its pages load without the editor (`open-pencil/no-editor-imports-in-cloud-portal`, `check:arch`).
 - The team's metrics dashboard is its own entry too (`metrics.html`, `src/metrics/`, `src/views/metrics/`), built by `bun run build:metrics` into `dist-metrics/` with base `/admin/` and served only by the feedback Worker behind Cloudflare Access; it follows the Cloud portal's isolation rule and reads its numbers through `@open-pencil/feedback/client` (`packages/feedback/tests/admin.test.ts`).
+- The app's pages listed in `bootSplashPlugin`'s `pages` (`vite.config.ts`) get the one boot splash from `vite/boot-splash`, after their `#app`, with its stylesheet and theme script built from `src/splash/`; never copy splash markup, styles, or theme logic into a page. The theme is the stored setting in `src/app/settings/theme.ts`, which the editor and the portal both resolve (`tests/app/settings/theme.test.ts`).
 - Which portal pages a visitor may open, by sign-in and account standing, is decided in `portalDestination` alone, and whether an editor page opens the editor or the welcome page in `siteDestination` (`tests/app/cloud-portal/navigation.test.ts`, `site.test.ts`).
 - On a Cloud server's own build (`__OPENPENCIL_CLOUD_SITE__`), `src/main.ts` runs the welcome check (`enterCloudSite` in `src/app/cloud-portal/site.ts`) after the support check and before `boot()`, so signed-out visitors never load the editor (`tests/app/cloud-portal/site.test.ts`).
 - A room is a document: every room tab owns its session (`src/app/collab/rooms.ts`, `session.ts`), joining always opens a new tab, and only Share binds an existing document; the collaboration UI reads the active tab's room through `useCollab()` and publishes cursors through the canvas's own tab (`tests/app/collab/session.test.ts`, `tests/e2e/collab/rooms.spec.ts`).
@@ -56,7 +57,7 @@ The supported browser baseline lives in `src/app/shell/support/baseline.ts` and 
 
 ## UI
 
-`src/components/ui/**` is generic, store-free design-system code grouped by family: `{button,input,select,toggle,dialog,panel,binding,feedback,overlay,menu,paint}/`. Do not create a folder named after a single component. Feature controls stay in their domain. Theme families mirror these under `src/theme/`; feature themes stay separate. Use explicit imports without old-path forwarding shims.
+`src/components/ui/**` is generic, store-free design-system code grouped by family: `{binding,button,collapsible,date,dialog,feedback,input,list,menu,overlay,paint,panel,select,table,tabs,toggle}/`. Do not create a folder named after a single component. Feature controls stay in their domain. Theme families mirror these under `src/theme/`; feature themes stay separate. Use explicit imports without old-path forwarding shims.
 
 ### Building blocks
 
@@ -66,7 +67,10 @@ The supported browser baseline lives in `src/app/shell/support/baseline.ts` and 
 - Colors are the `--color-*` tokens in `src/theme/tokens.css`, each defined for both themes; statuses use one family each: `error` and `warning` have a text color, a `-bg` tint, and a `-border`, `success` a text color; `error-fill` and `success-fill` are solid, and `warning-action` colors buttons on the warning tint. Name the token's utility (`text-warning`), not `[var(--color-warning)]` or a default palette color (`open-pencil/no-unknown-tailwind-classes`).
 - Bind visual state through semantic `data-*` attributes. Steiger rejects template-time `use*UI()`, visual-state utility branches, and raw SVG app icons.
 - `Tip`, not native `title`; Lucide/Iconify components, not raw SVG or Unicode icons; `e.code`, not `e.key`, for modified shortcuts.
-- App dialogs compose the Reka-backed components under `src/components/ui/dialog/` and the typed theme in `src/theme/dialog.ts`. Do not repeat portal, overlay, content, header, or footer infrastructure in feature dialogs.
+- A theme file default-exports a plain slots object; the component side wraps it with `tv` once and derives its `UI` type with `ComponentUI` (`open-pencil/no-tailwind-variants-in-themes`, `check:arch`).
+- A family of parts keeps one theme in `src/theme/<family>/index.ts`, wraps it in `ui.ts` as `<family>` and `use<Family>UI`, and exports its parts from `index.ts`; a single component keeps `src/theme/<family>/<component>.ts` and a wrapper of the same name (`src/components/ui/table/ui.ts`, `src/components/ui/feedback/toast.ts`).
+- Compose a family's parts as components whose slots carry content, not data a part could render itself (`src/components/ui/table/`).
+- App dialogs compose the Reka-backed components under `src/components/ui/dialog/` and the typed theme in `src/theme/dialog/index.ts`. Do not repeat portal, overlay, content, header, or footer infrastructure in feature dialogs.
 - SDK property primitives, binding fields, commands, and i18n: `packages/vue/AGENTS.md`.
 
 ### Layout
@@ -88,6 +92,8 @@ The supported browser baseline lives in `src/app/shell/support/baseline.ts` and 
 ### Feedback and forms
 
 - `AppAlert` (`src/components/ui/feedback/AppAlert.vue`, theme `src/theme/feedback/alert.ts`) for persistent contextual errors, warnings, recovery guidance, and informative results, with translated `heading`/`description` and an `actions` slot. Do not hand-roll alert markup or colored error paragraphs. Alerts announce changes without taking keyboard focus.
+- Rows under labelled columns are a TanStack Table drawn by `AppDataTable` from the table parts (`src/components/ui/table/`): each column renders its own cell, plain values through `accessor` and anything richer as a cell component through `h()`, with widths or container-width hiding in its `meta`; do not hand-roll `<ul>` rows with aligned spans or pass cells through slots. Portal lists the server pages go through `usePortalList` and `PortalTable` (`src/components/cloud-portal/console/PortalPeople.vue`).
+- Content that is loading shows `AppSkeleton` placeholders in its own shape, which fade in after a moment so fast answers replace nothing; a refresh keeps what was shown, and an empty state appears only once a load finished with nothing in it (`src/components/ui/table/AppTablePlaceholder.vue`, `src/components/cloud-portal/layout/PortalPageSkeleton.vue`).
 - The toast service is for transient confirmations without a visible control to carry them, such as a copy from a menu or shortcut, or an action completed after its view closes. A copy button confirms in place instead: a leading copy icon that turns into a check and the label `common.copied` (`src/components/ui/input/AppCopyField.vue`). Never show a toast and an alert for the same event; partial saves and actionable failures must not disappear in a toast.
 - Field validation stays inline in the shared field component with `aria-invalid`, error text before hints, and first-invalid-field focus.
 - Ordinary labels such as Running/Stopped remain status text or badges. Destructive confirmation belongs in the shared confirmation dialog.

@@ -12,7 +12,8 @@ import { buildParagraph } from '#core/canvas/text'
 import { withFigExportRuntime } from '#core/canvas/text/shape'
 import { getCanvasKit } from '#core/canvaskit'
 import { FontManager, fontManager } from '#core/text/fonts'
-import { glyphOutlineSourceSync } from '#core/text/opentype'
+import { WEB_FONT_PROVIDER_IDS } from '#core/text/web-fonts'
+import { glyphOutlineSourceSync } from '#core/text/font/glyphs'
 
 /** A family only these tests load, so faces other tests load cannot answer for it. */
 const FAMILY = 'Faces Test Sans'
@@ -58,6 +59,36 @@ function drawn(
   }
 }
 
+function fixtureFont(file: string): Promise<ArrayBuffer> {
+  return Bun.file(join(FIXTURES, 'fonts', file)).arrayBuffer()
+}
+
+/** How many characters of `text` the paragraph the canvas draws shapes to the missing glyph. */
+function missingGlyphs(
+  ck: CanvasKit,
+  fontProvider: TypefaceFontProvider,
+  fontFamily: string,
+  text: string
+): number {
+  const node = createDefaultNode(() => 'face-text', 'TEXT', {
+    text,
+    fontFamily,
+    fontSize: 40,
+    width: 600,
+    height: 60
+  })
+  const paragraph = buildParagraph({ ck, fontProvider, fontsLoaded: true }, node, ck.BLACK)
+  try {
+    paragraph.layout(600)
+    return paragraph
+      .getShapedLines()
+      .flatMap((line) => line.runs.flatMap((run) => Array.from(run.glyphs)))
+      .filter((glyph) => glyph === 0).length
+  } finally {
+    paragraph.delete()
+  }
+}
+
 /**
  * Asked for a face a family has not loaded, CanvasKit would slant or embolden another, which
  * neither Figma, a browser, nor a native text stack draws the same. Figma draws a missing face as
@@ -68,7 +99,7 @@ describe('text faces', () => {
     const ck = await getCanvasKit()
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
-    fontManager.markLoaded(FAMILY, 'Regular', await bundled('/InterVariable.ttf'))
+    await fontManager.markLoaded(FAMILY, 'Regular', await bundled('/InterVariable.ttf'))
     const regular = drawn(ck, fontProvider, { fontWeight: 400, italic: false })
     expect(drawn(ck, fontProvider, { fontWeight: 400, italic: true })).toEqual(regular)
     expect(drawn(ck, fontProvider, { fontWeight: 700, italic: false })).toEqual(regular)
@@ -78,8 +109,8 @@ describe('text faces', () => {
     const ck = await getCanvasKit()
     const fontProvider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, fontProvider)
-    fontManager.markLoaded(FAMILY, 'Regular', await bundled('/InterVariable.ttf'))
-    fontManager.markLoaded(FAMILY, 'Bold', await bundled('/InterVariable.ttf'))
+    await fontManager.markLoaded(FAMILY, 'Regular', await bundled('/InterVariable.ttf'))
+    await fontManager.markLoaded(FAMILY, 'Bold', await bundled('/InterVariable.ttf'))
     const regular = drawn(ck, fontProvider, { fontWeight: 400, italic: false })
     expect(drawn(ck, fontProvider, { fontWeight: 700, italic: false })).not.toEqual(regular)
   })
@@ -93,7 +124,7 @@ describe('text faces', () => {
       join(FIXTURES, 'fonts', 'InterVariable-Latin.ttf')
     ).arrayBuffer()
     const fontFamily = 'Faces Test Optical'
-    fontManager.markLoaded(fontFamily, 'Regular', variable)
+    await fontManager.markLoaded(fontFamily, 'Regular', variable)
     const face = (fields: Partial<SceneNode>) =>
       drawn(ck, fontProvider, { fontFamily, fontWeight: 400, italic: false, ...fields })
     const automatic = face({})
@@ -116,12 +147,77 @@ describe('text faces', () => {
     const variable = await Bun.file(
       join(FIXTURES, 'fonts', 'InterVariable-Latin.ttf')
     ).arrayBuffer()
-    fontManager.markLoaded('Faces Test Mixed', 'Regular', regular)
-    fontManager.markLoaded('Faces Test Mixed', 'Light', variable)
-    fontManager.markLoaded('Faces Test Variable Only', 'Light', variable)
+    await fontManager.markLoaded('Faces Test Mixed', 'Regular', regular)
+    await fontManager.markLoaded('Faces Test Mixed', 'Light', variable)
+    await fontManager.markLoaded('Faces Test Variable Only', 'Light', variable)
     const light = (fontFamily: string) =>
       drawn(ck, fontProvider, { fontFamily, fontWeight: 300, italic: false })
     expect(light('Faces Test Mixed')).toEqual(light('Faces Test Variable Only'))
+  })
+
+  test('draws a style from the file that replaced the one it loaded first', async () => {
+    // A web font fetched again for more characters replaces the file the style loaded first,
+    // which stays registered under the family's name ahead of it.
+    const ck = await getCanvasKit()
+    const fontProvider = ck.TypefaceFontProvider.Make()
+    fontManager.attachProvider(ck, fontProvider)
+    const fontFamily = 'Faces Test Replaced'
+    await fontManager.markLoaded(fontFamily, 'Regular', await fixtureFont('InterVariable-Latin.ttf'))
+    await fontManager.markLoaded(fontFamily, 'Regular', await fixtureFont('NotoSansSC-Regular.ttf'))
+    expect(missingGlyphs(ck, fontProvider, fontFamily, '中文')).toBe(0)
+  })
+
+  test('draws a web font split by unicode-range from each of its files', async () => {
+    // As a CJK family comes: a Latin file, and shards for the rest.
+    const ck = await getCanvasKit()
+    const fontProvider = ck.TypefaceFontProvider.Make()
+    fontManager.attachProvider(ck, fontProvider)
+    const fontFamily = 'Faces Test Shards'
+    const CJK_SHARD = 'https://fonts.gstatic.com/s/test/shards-cjk.ttf'
+    const files = {
+      'https://fonts.gstatic.com/s/test/shards-latin.ttf': {
+        range: 'U+0000-00FF',
+        data: await fixtureFont('InterVariable-Latin.ttf')
+      },
+      [CJK_SHARD]: {
+        range: 'U+4E00-9FFF',
+        data: await fixtureFont('NotoSansSC-Regular.ttf')
+      }
+    }
+    const providers = fontManager.enabledOnlineFontProviders()
+    fontManager.setOnlineFontProviders({ google: true })
+    fontManager.setWebFontFetch(async (url) => {
+      if (url.startsWith('https://fonts.google.com/metadata/fonts'))
+        return Response.json({ familyMetadataList: [{ family: fontFamily, fonts: { '400': {} }, axes: [] }] })
+      if (url.startsWith('https://fonts.google.com/metadata/icons'))
+        return new Response(`)]}'\n${JSON.stringify({ families: [] })}`)
+      if (url.startsWith('https://fonts.googleapis.com/css2'))
+        return new Response(
+          Object.entries(files)
+            .map(
+              ([src, { range }]) =>
+                `@font-face { font-family: '${fontFamily}'; font-weight: 400; src: url(${src}) format('truetype'); unicode-range: ${range}; }`
+            )
+            .join('\n')
+        )
+      const file = Object.entries(files).find(([src]) => src === url)?.[1]
+      return file ? new Response(file.data.slice(0)) : new Response(null, { status: 404 })
+    })
+    try {
+      await fontManager.loadFont(fontFamily, 'Regular', 'Faces 中文')
+      expect(missingGlyphs(ck, fontProvider, fontFamily, 'Faces 中文')).toBe(0)
+      // And paints them as the CJK file does on its own.
+      await fontManager.markLoaded('Faces Test Han', 'Regular', files[CJK_SHARD].data)
+      const paint = (family: string, text: string) =>
+        drawn(ck, fontProvider, { fontFamily: family, text, fontWeight: 400, italic: false })
+      expect(paint(fontFamily, '中文')).toEqual(paint('Faces Test Han', '中文'))
+      expect(paint(fontFamily, '中文')).not.toEqual(paint(fontFamily, ' '))
+    } finally {
+      fontManager.setWebFontFetch(null)
+      fontManager.setOnlineFontProviders(
+        Object.fromEntries(WEB_FONT_PROVIDER_IDS.map((id) => [id, providers.includes(id)]))
+      )
+    }
   })
 
   /**
@@ -130,9 +226,9 @@ describe('text faces', () => {
    */
   test('saves fallback characters in the face the text is drawn in', async () => {
     const primary = 'Faces Test Naskh'
-    fontManager.markLoaded(primary, 'Regular', await bundled('/NotoNaskhArabic-Regular.ttf'))
-    fontManager.markLoaded('Inter', 'Regular', await bundled('/InterVariable.ttf'))
-    fontManager.markLoaded('Inter', 'Bold', await bundled('/InterVariable.ttf'))
+    await fontManager.markLoaded(primary, 'Regular', await bundled('/NotoNaskhArabic-Regular.ttf'))
+    await fontManager.markLoaded('Inter', 'Regular', await bundled('/InterVariable.ttf'))
+    await fontManager.markLoaded('Inter', 'Bold', await bundled('/InterVariable.ttf'))
     const graph = new SceneGraph()
     const node = graph.createNode('TEXT', graph.getPages()[0].id, {
       text: 'F',
@@ -149,7 +245,11 @@ describe('text faces', () => {
       ),
       'shaped text'
     )
-    const regular = expectDefined(glyphOutlineSourceSync('Inter', 'Regular'), 'Inter Regular')
+    // At the optical size the font size sets, as the paragraph draws every family it falls back to.
+    const regular = expectDefined(
+      glyphOutlineSourceSync('Inter', 'Regular', [{ axis: 'opsz', value: 40 }]),
+      'Inter Regular'
+    )
     expect(shaped.glyphs[0]?.commands).toEqual(regular.outline(regular.glyphOf('F'), 40))
   })
 })

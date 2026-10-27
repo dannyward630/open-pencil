@@ -12,6 +12,8 @@ export const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'ja', 'pl', 'ru', 'zh-CN']
 export const DOCUMENT_FORMATS = [
   'fig',
   'pen',
+  'drawio',
+  'mermaid',
   'png',
   'jpg',
   'webp',

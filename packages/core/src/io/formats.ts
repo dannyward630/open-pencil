@@ -20,7 +20,6 @@ import type { DrawIOExportTarget } from './formats/drawio/export'
 import { exportFigFile, parseFigFile } from './formats/fig'
 import type { PPTXExportOptions } from './formats/pptx'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
-import { renderNodesToSVG } from './formats/svg'
 import { extractExportGraph, findPageId } from './subgraph'
 import type {
   ExportRequest,
@@ -302,6 +301,7 @@ export const penFormat: IOFormatAdapter<'pen'> = {
   support: {
     readDocument: true
   },
+  laysOutOnRead: true,
   matchesFile(fileName, mimeType) {
     return lowerExt(fileName) === 'pen' || mimeType === 'application/json'
   },
@@ -342,6 +342,7 @@ export const drawioFormat: IOFormatAdapter<'drawio'> = {
     exportNode: true
   },
   exportOptions: FIXED_SIZE_EXPORT,
+  laysOutOnRead: true,
   // A draw.io PNG or SVG export opens as its diagram when its name says it is one.
   matchesFile(fileName, mimeType) {
     const ext = lowerExt(fileName)
@@ -384,6 +385,31 @@ export const drawioFormat: IOFormatAdapter<'drawio'> = {
   }
 }
 
+export const mermaidFormat: IOFormatAdapter<'mermaid'> = {
+  id: 'mermaid',
+  label: 'Mermaid Diagram',
+  role: 'interchange-document',
+  category: 'document',
+  extensions: ['mmd', 'mermaid'],
+  mimeTypes: ['text/vnd.mermaid'],
+  support: {
+    readDocument: true
+  },
+  laysOutOnRead: true,
+  matchesFile(fileName, mimeType) {
+    const ext = lowerExt(fileName)
+    return ext === 'mmd' || ext === 'mermaid' || mimeType === 'text/vnd.mermaid'
+  },
+  async readDocument(input) {
+    const { detectMermaidDiagram } = await import('@open-pencil/mermaid')
+    const text = new TextDecoder().decode(input.data)
+    if (!detectMermaidDiagram(text)) throw new Error('This file holds no Mermaid flowchart')
+    // Mermaid stores a diagram's structure, which reading lays out with its text measured.
+    const { mermaidToSceneGraph } = await import('./formats/mermaid')
+    return { graph: await mermaidToSceneGraph(text), sourceFormat: 'mermaid' }
+  }
+}
+
 /** Pages or layers as a draw.io file, loading the writer only when one is saved. */
 async function writeDrawIO(graph: SceneGraph, target: DrawIOExportTarget): Promise<ExportResult> {
   const { writeDrawIOFile } = await import('@open-pencil/drawio')
@@ -413,7 +439,13 @@ export const svgFormat: IOFormatAdapter<'svg'> = {
   async exportContent(request, options?: SVGExportOptions) {
     const target = resolveExportNodes(request)
     if (!target) throw new Error('Nothing to export')
-    const data = renderNodesToSVG(request.graph, target.pageId, target.nodeIds, options)
+    const { renderNodesToLaidOutSVG } = await import('./formats/svg/text/layout')
+    const data = await renderNodesToLaidOutSVG(
+      request.graph,
+      target.pageId,
+      target.nodeIds,
+      options
+    )
     if (!data) throw new Error('Nothing to export')
     return {
       format: 'svg',
@@ -437,8 +469,9 @@ export const pdfFormat: IOFormatAdapter<'pdf'> = {
   async exportContent(request) {
     const target = resolveExportNodes(request)
     if (!target) throw new Error('Nothing to export')
-    const { renderNodesToPDF } = await import('./formats/pdf')
-    const data = await renderNodesToPDF(request.graph, target.pageId, target.nodeIds)
+    // Embedded, as Figma embeds every face its PDFs draw.
+    const { exportPDFDocument } = await import('./formats/pdf/document')
+    const data = (await exportPDFDocument(request.graph, [target], { embedFonts: true }))?.data
     if (!data) throw new Error('Nothing to export')
     return {
       format: 'pdf',
@@ -580,6 +613,7 @@ export const BUILTIN_IO_FORMATS = [
   figFormat,
   penFormat,
   drawioFormat,
+  mermaidFormat,
   pngFormat,
   jpgFormat,
   webpFormat,
