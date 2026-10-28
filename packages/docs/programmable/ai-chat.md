@@ -90,11 +90,11 @@ The assistant can verify its work visually. With `export_image`, on by default, 
 
 ## Stopping a reply
 
-**Stop** ends a reply at once. A tool call already running finishes, and its edit counts as part of the reply; calls still waiting for their turn change nothing. The reply is marked *Stopped*, its reasoning and any unfinished calls stop showing as running, and your next message tells the assistant whether those calls changed the document.
+**Stop** ends a reply at once. A tool call already running finishes, and its edit counts as part of the reply; calls still waiting for their turn change nothing. The reply is marked _Stopped_, its reasoning and any unfinished calls stop showing as running, and your next message tells the assistant whether those calls changed the document.
 
 ## Undoing the assistant's edits
 
-Each tool call that changes the document is one step in Edit → Undo. Undoing it with <kbd>⌘</kbd><kbd>Z</kbd> marks the call *Undone* in the chat. A reply with only some edits undone says how many; one with all of them undone is dimmed and marked *Changes reverted*. Redo removes the marks. The marks are saved with the conversation.
+Each tool call that changes the document is one step in Edit → Undo. Undoing it with <kbd>⌘</kbd><kbd>Z</kbd> marks the call _Undone_ in the chat. A reply with only some edits undone says how many; one with all of them undone is dimmed and marked _Changes reverted_. Redo removes the marks. The marks are saved with the conversation.
 
 **Revert changes** on a reply undoes its edits while nothing has been edited since, and **Restore changes** brings undone edits back while Redo still can. **Regenerate** and editing your last message undo the replaced reply's edits first when they can.
 
