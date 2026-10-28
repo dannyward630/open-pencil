@@ -14,6 +14,8 @@ import {
   SVG_STROKE_CAP,
   SVG_STROKE_JOIN,
   SVG_BLEND_MODE,
+  type SVGExportContext,
+  type SVGFontAlias,
   type SVGExportWarning
 } from './defs'
 import {
@@ -39,7 +41,6 @@ export {
 import type { SceneGraph, SceneNode, Fill, Stroke, VectorNetwork } from '@open-pencil/scene-graph'
 
 import { arrowHeadElements, openPathElements, vectorArrowHeads } from './arrows'
-import type { SVGExportContext, SVGFontAlias } from './defs'
 import { svg, renderSVGNode } from './node'
 import type { SVGNode } from './node'
 import { alignedStroke, alignedStrokeElement, shapeWithTextDetailElements } from './strokes'
