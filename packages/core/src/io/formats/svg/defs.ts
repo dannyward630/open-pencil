@@ -70,6 +70,18 @@ export class SVGUnsupportedEffectError extends Error {
   }
 }
 
+export function unsupportedEffectWarnings(effects: Effect[], node: SceneNode): SVGExportWarning[] {
+  return effects
+    .filter((effect) => effect.visible && effect.type === 'BACKGROUND_BLUR')
+    .map((): SVGExportWarning => ({
+      code: 'unsupported-effect',
+      effect: 'BACKGROUND_BLUR',
+      nodeId: node.id,
+      nodeName: node.name,
+      message: `SVG export cannot faithfully represent BACKGROUND_BLUR on "${node.name}" (${node.id}); SVG filters cannot sample the backdrop.`
+    }))
+}
+
 export function nextDefId(ctx: SVGExportContext, prefix: string): string {
   return `${ctx.idPrefix ?? ''}${prefix}${ctx.defIdCounter++}`
 }
@@ -237,15 +249,8 @@ export function createFilterDef(
   const visible = effects.filter((e) => e.visible)
   if (visible.length === 0) return null
 
-  const unsupported = visible.filter((effect) => effect.type === 'BACKGROUND_BLUR')
-  if (unsupported.length > 0) {
-    const warnings = unsupported.map((): SVGExportWarning => ({
-      code: 'unsupported-effect',
-      effect: 'BACKGROUND_BLUR',
-      nodeId: node.id,
-      nodeName: node.name,
-      message: `SVG export cannot faithfully represent BACKGROUND_BLUR on "${node.name}" (${node.id}); SVG filters cannot sample the backdrop.`
-    }))
+  const warnings = unsupportedEffectWarnings(visible, node)
+  if (warnings.length > 0) {
     if (!ctx.skipUnsupportedEffects) throw new SVGUnsupportedEffectError(warnings)
     for (const warning of warnings) ctx.onWarning?.(warning)
   }

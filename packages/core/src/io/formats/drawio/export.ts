@@ -27,7 +27,12 @@ import Matrix from '@open-pencil/scene-graph/matrix'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import { computeContentBounds } from '#core/io/formats/raster'
-import { renderNodesToSVG, type SVGExportWarning } from '#core/io/formats/svg'
+import {
+  renderNodesToSVG,
+  SVGUnsupportedEffectError,
+  type SVGExportWarning
+} from '#core/io/formats/svg'
+import { unsupportedEffectWarnings } from '#core/io/formats/svg/defs'
 
 import { DEFAULT_FONT_FAMILY } from './paint'
 import { EMPTY_GEOMETRY, placed, placedValues, round, type Placed } from './placement'
@@ -179,6 +184,7 @@ class PageWriter {
   constructor(
     private readonly graph: SceneGraph,
     private readonly pageId: string,
+    private readonly skipUnsupportedEffects: boolean,
     private readonly onWarning?: (warning: SVGExportWarning) => void
   ) {}
 
@@ -285,6 +291,12 @@ class PageWriter {
   }
 
   private layer(node: SceneNode, parent: string) {
+    const warnings = unsupportedEffectWarnings(node.effects, node)
+    if (warnings.length > 0) {
+      if (!this.skipUnsupportedEffects) throw new SVGUnsupportedEffectError(warnings)
+      for (const warning of warnings) this.onWarning?.(warning)
+    }
+
     const placement = this.place(node, parent)
     const { geometry } = placement
     switch (node.type) {
@@ -417,7 +429,7 @@ class PageWriter {
   /** A layer draw.io has no cell for, drawn as the SVG image it exports as, where it covers. */
   private picture(node: SceneNode, parent: string) {
     const svg = renderNodesToSVG(this.graph, this.pageId, [node.id], {
-      skipUnsupportedEffects: true,
+      skipUnsupportedEffects: this.skipUnsupportedEffects,
       onWarning: this.onWarning
     })
     if (!svg) return
@@ -526,10 +538,11 @@ function pageOf(
   graph: SceneGraph,
   pageId: string,
   nodeIds?: readonly string[],
+  skipUnsupportedEffects = false,
   onWarning?: (warning: SVGExportWarning) => void
 ): DrawIOPage {
   const page = graph.getNode(pageId)
-  const writer = new PageWriter(graph, pageId, onWarning)
+  const writer = new PageWriter(graph, pageId, skipUnsupportedEffects, onWarning)
   writer.write(nodeIds ?? page?.childIds ?? [])
   return {
     id: pageId,
@@ -547,6 +560,8 @@ export type DrawIOExportTarget =
   | { pageId: string; nodeIds: readonly string[] }
 
 export interface DrawIOExportOptions {
+  /** Omit backdrop blur effects and report them through `onWarning`. Defaults to false. */
+  skipUnsupportedEffects?: boolean
   onWarning?: (warning: SVGExportWarning) => void
 }
 
@@ -570,7 +585,9 @@ export function sceneGraphToDrawIO(
   }
   const pages =
     'pageIds' in target
-      ? target.pageIds.map((pageId) => pageOf(graph, pageId, undefined, onWarning))
-      : [pageOf(graph, target.pageId, target.nodeIds, onWarning)]
+      ? target.pageIds.map((pageId) =>
+          pageOf(graph, pageId, undefined, options.skipUnsupportedEffects, onWarning)
+        )
+      : [pageOf(graph, target.pageId, target.nodeIds, options.skipUnsupportedEffects, onWarning)]
   return { pages, unreadable: [] }
 }
