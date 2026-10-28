@@ -245,6 +245,59 @@ describe('saving a draw.io file', () => {
     ])
   })
 
+  test('keeps hidden cells without reporting their unsupported effects', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const hiddenGroup = graph.createNode('GROUP', page.id, { visible: false })
+    const hiddenChild = graph.createNode('RECTANGLE', hiddenGroup.id, {
+      width: 40,
+      height: 40,
+      effects: [
+        {
+          type: 'BACKGROUND_BLUR',
+          radius: 12,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          spread: 0
+        }
+      ]
+    })
+    const hiddenShape = graph.createNode('RECTANGLE', page.id, {
+      visible: false,
+      width: 40,
+      height: 40,
+      effects: [
+        {
+          type: 'BACKGROUND_BLUR',
+          radius: 12,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          spread: 0
+        }
+      ]
+    })
+
+    const result = sceneGraphToDrawIO(graph, { pageIds: [page.id] })
+    expect(result.pages[0]?.cells).toHaveLength(3)
+    expect(result.pages[0]?.cells.map((cell) => [cell.id, cell.visible])).toEqual([
+      ['2', false],
+      ['3', true],
+      ['4', false]
+    ])
+
+    const warnings: Array<{ nodeId: string; effect: string }> = []
+    sceneGraphToDrawIO(
+      graph,
+      { pageIds: [page.id] },
+      { skipUnsupportedEffects: true, onWarning: (warning) => warnings.push(warning) }
+    )
+    expect(warnings).toEqual([])
+    expect(hiddenChild.visible).toBe(true)
+    expect(hiddenShape.visible).toBe(false)
+  })
+
   test('turned rectangles, ellipses, and text keep their turn', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

@@ -290,8 +290,19 @@ class PageWriter {
     }
   }
 
+  private isEffectivelyVisible(node: SceneNode): boolean {
+    let current: SceneNode | undefined = node
+    while (current && current.id !== this.pageId) {
+      if (!current.visible) return false
+      current = current.parentId ? this.graph.getNode(current.parentId) : undefined
+    }
+    return true
+  }
+
   private layer(node: SceneNode, parent: string) {
-    const warnings = unsupportedEffectWarnings(node.effects, node)
+    const warnings = this.isEffectivelyVisible(node)
+      ? unsupportedEffectWarnings(node.effects, node)
+      : []
     if (warnings.length > 0) {
       if (!this.skipUnsupportedEffects) throw new SVGUnsupportedEffectError(warnings)
       for (const warning of warnings) this.onWarning?.(warning)

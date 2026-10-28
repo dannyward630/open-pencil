@@ -78,7 +78,7 @@ export function unsupportedEffectWarnings(effects: Effect[], node: SceneNode): S
       effect: 'BACKGROUND_BLUR',
       nodeId: node.id,
       nodeName: node.name,
-      message: `SVG export cannot faithfully represent BACKGROUND_BLUR on "${node.name}" (${node.id}); SVG filters cannot sample the backdrop.`
+      message: `Cannot faithfully represent BACKGROUND_BLUR on "${node.name}" (${node.id}); the target format cannot sample the backdrop.`
     }))
 }
 

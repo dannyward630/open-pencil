@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '#core/io'
-import { renderNodesToSVG } from '#core/io/formats/svg/index'
+import { renderNodesToSVG, type SVGExportWarning } from '#core/io/formats/svg/index'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
@@ -48,7 +48,7 @@ describe('SVG export background blur', () => {
     })
 
     expect(() => renderNodesToSVG(graph, page.id, [frame.id], { colorSpace: 'srgb' })).toThrow(
-      'SVG export cannot faithfully represent BACKGROUND_BLUR'
+      'Cannot faithfully represent BACKGROUND_BLUR'
     )
   })
 
@@ -118,17 +118,17 @@ describe('SVG export background blur', () => {
       ]
     })
 
-    const callbackWarnings: Array<{ code: string; nodeId: string; effect: string }> = []
+    const callbackWarnings: SVGExportWarning[] = []
     const result = await io.exportContent(
       'svg',
       { graph, target: { scope: 'node', nodeId: node.id } },
       {
         skipUnsupportedEffects: true,
-        onWarning: (warning) => callbackWarnings.push(warning)
+        onWarning: (warning: SVGExportWarning) => callbackWarnings.push(warning)
       }
     )
 
-    expect(result.warnings).toEqual([
+    expect(result.warnings ?? []).toEqual([
       expect.objectContaining({
         code: 'unsupported-effect',
         effect: 'BACKGROUND_BLUR',
@@ -136,6 +136,6 @@ describe('SVG export background blur', () => {
         nodeName: 'Blurred layer'
       })
     ])
-    expect(callbackWarnings).toEqual(result.warnings)
+    expect(callbackWarnings).toEqual(result.warnings ?? [])
   })
 })
