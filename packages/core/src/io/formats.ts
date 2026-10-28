@@ -414,12 +414,17 @@ export const mermaidFormat: IOFormatAdapter<'mermaid'> = {
 async function writeDrawIO(graph: SceneGraph, target: DrawIOExportTarget): Promise<ExportResult> {
   const { writeDrawIOFile } = await import('@open-pencil/drawio')
   const { sceneGraphToDrawIO } = await import('./formats/drawio')
+  const warnings: NonNullable<ExportResult['warnings']> = []
+  const diagram = sceneGraphToDrawIO(graph, target, {
+    onWarning: (warning) => warnings.push(warning)
+  })
   return {
     format: 'drawio',
     mimeType: 'application/vnd.jgraph.mxfile',
     extension: 'drawio',
-    data: writeDrawIOFile(sceneGraphToDrawIO(graph, target)),
-    encoding: 'utf8'
+    data: writeDrawIOFile(diagram),
+    encoding: 'utf8',
+    ...(warnings.length > 0 ? { warnings } : {})
   }
 }
 
@@ -471,13 +476,14 @@ export const pdfFormat: IOFormatAdapter<'pdf'> = {
     if (!target) throw new Error('Nothing to export')
     // Embedded, as Figma embeds every face its PDFs draw.
     const { exportPDFDocument } = await import('./formats/pdf/document')
-    const data = (await exportPDFDocument(request.graph, [target], { embedFonts: true }))?.data
-    if (!data) throw new Error('Nothing to export')
+    const result = await exportPDFDocument(request.graph, [target], { embedFonts: true })
+    if (!result) throw new Error('Nothing to export')
     return {
       format: 'pdf',
       mimeType: 'application/pdf',
       extension: 'pdf',
-      data
+      data: result.data,
+      ...(result.warnings ? { warnings: result.warnings } : {})
     }
   }
 }

@@ -136,6 +136,39 @@ describe('saving a draw.io file', () => {
     })
   })
 
+  test('exports SVG pictures and reports omitted backdrop blur', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const star = graph.createNode('STAR', page.id, {
+      width: 40,
+      height: 40,
+      effects: [
+        {
+          type: 'BACKGROUND_BLUR',
+          radius: 12,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          spread: 0
+        }
+      ]
+    })
+
+    const result = await io.exportContent('drawio', {
+      graph,
+      target: { scope: 'page', pageId: page.id }
+    })
+
+    expect(typeof result.data).toBe('string')
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'unsupported-effect',
+        effect: 'BACKGROUND_BLUR',
+        nodeId: star.id
+      })
+    ])
+  })
+
   test('turned rectangles, ellipses, and text keep their turn', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

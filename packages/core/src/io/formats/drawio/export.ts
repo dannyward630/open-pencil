@@ -27,7 +27,7 @@ import Matrix from '@open-pencil/scene-graph/matrix'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import { computeContentBounds } from '#core/io/formats/raster'
-import { renderNodesToSVG } from '#core/io/formats/svg'
+import { renderNodesToSVG, type SVGExportWarning } from '#core/io/formats/svg'
 
 import { DEFAULT_FONT_FAMILY } from './paint'
 import { EMPTY_GEOMETRY, placed, placedValues, round, type Placed } from './placement'
@@ -178,7 +178,8 @@ class PageWriter {
 
   constructor(
     private readonly graph: SceneGraph,
-    private readonly pageId: string
+    private readonly pageId: string,
+    private readonly onWarning?: (warning: SVGExportWarning) => void
   ) {}
 
   private idOf(nodeId: string): string {
@@ -415,7 +416,10 @@ class PageWriter {
 
   /** A layer draw.io has no cell for, drawn as the SVG image it exports as, where it covers. */
   private picture(node: SceneNode, parent: string) {
-    const svg = renderNodesToSVG(this.graph, this.pageId, [node.id])
+    const svg = renderNodesToSVG(this.graph, this.pageId, [node.id], {
+      skipUnsupportedEffects: true,
+      onWarning: this.onWarning
+    })
     if (!svg) return
     const data = fromUint8Array(new TextEncoder().encode(svg))
     this.push(node, parent, {
@@ -518,9 +522,14 @@ class PageWriter {
 }
 
 /** One page of layers as a draw.io page, holding `nodeIds` or every layer on it. */
-function pageOf(graph: SceneGraph, pageId: string, nodeIds?: readonly string[]): DrawIOPage {
+function pageOf(
+  graph: SceneGraph,
+  pageId: string,
+  nodeIds?: readonly string[],
+  onWarning?: (warning: SVGExportWarning) => void
+): DrawIOPage {
   const page = graph.getNode(pageId)
-  const writer = new PageWriter(graph, pageId)
+  const writer = new PageWriter(graph, pageId, onWarning)
   writer.write(nodeIds ?? page?.childIds ?? [])
   return {
     id: pageId,
@@ -537,16 +546,31 @@ export type DrawIOExportTarget =
   | { pageIds: readonly string[] }
   | { pageId: string; nodeIds: readonly string[] }
 
+export interface DrawIOExportOptions {
+  onWarning?: (warning: SVGExportWarning) => void
+}
+
 /**
  * Layers as a draw.io file: FigJam shapes as draw.io's shapes of the same meaning, connectors as
  * edges joined to them, bent the way they were dragged, text as text, sections as swimlanes, and
  * frames and groups as containers. A layer draw.io has no cell for goes as an SVG image of
  * itself, so nothing is lost.
  */
-export function sceneGraphToDrawIO(graph: SceneGraph, target: DrawIOExportTarget): DrawIOFile {
+export function sceneGraphToDrawIO(
+  graph: SceneGraph,
+  target: DrawIOExportTarget,
+  options: DrawIOExportOptions = {}
+): DrawIOFile {
+  const warnings = new Set<string>()
+  const onWarning = (warning: SVGExportWarning) => {
+    const key = `${warning.effect}:${warning.nodeId}`
+    if (warnings.has(key)) return
+    warnings.add(key)
+    options.onWarning?.(warning)
+  }
   const pages =
     'pageIds' in target
-      ? target.pageIds.map((pageId) => pageOf(graph, pageId))
-      : [pageOf(graph, target.pageId, target.nodeIds)]
+      ? target.pageIds.map((pageId) => pageOf(graph, pageId, undefined, onWarning))
+      : [pageOf(graph, target.pageId, target.nodeIds, onWarning)]
   return { pages, unreadable: [] }
 }

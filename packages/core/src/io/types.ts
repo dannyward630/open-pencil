@@ -106,6 +106,8 @@ export interface ExportResult {
   extension: string
   data: IOData
   encoding?: IOTextEncoding
+  /** Effects omitted by an export format that cannot represent them. */
+  warnings?: SVGExportWarning[]
   /** Extra files the main file refers to, such as external images and fonts. */
   assets?: ExportAsset[]
 }
