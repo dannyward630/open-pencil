@@ -67,6 +67,14 @@ describe('SVG export background blur', () => {
           color: { r: 0, g: 0, b: 0, a: 0 },
           offset: { x: 0, y: 0 },
           spread: 0
+        },
+        {
+          type: 'DROP_SHADOW',
+          radius: 8,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0.25 },
+          offset: { x: 4, y: 4 },
+          spread: 0
         }
       ]
     })
@@ -80,6 +88,7 @@ describe('SVG export background blur', () => {
 
     expect(svg).toContain('<svg')
     expect(svg).not.toContain('feGaussianBlur')
+    expect(svg).toContain('feDropShadow')
     expect(warnings).toEqual([
       expect.objectContaining({
         code: 'unsupported-effect',
