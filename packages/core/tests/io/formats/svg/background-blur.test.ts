@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { BUILTIN_IO_FORMATS, IORegistry } from '#core/io'
 import { renderNodesToSVG } from '#core/io/formats/svg/index'
+
+const io = new IORegistry(BUILTIN_IO_FORMATS)
 
 const solidFill = (value: number) => ({
   type: 'SOLID' as const,
@@ -84,5 +87,46 @@ describe('SVG export background blur', () => {
         nodeId: node.id
       })
     ])
+  })
+
+  test('returns omitted-effect warnings from the SVG format adapter', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const node = graph.createNode('RECTANGLE', page.id, {
+      name: 'Blurred layer',
+      width: 160,
+      height: 96,
+      fills: [solidFill(0)],
+      effects: [
+        {
+          type: 'BACKGROUND_BLUR',
+          radius: 12,
+          visible: true,
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          spread: 0
+        }
+      ]
+    })
+
+    const callbackWarnings: Array<{ code: string; nodeId: string; effect: string }> = []
+    const result = await io.exportContent(
+      'svg',
+      { graph, target: { scope: 'node', nodeId: node.id } },
+      {
+        skipUnsupportedEffects: true,
+        onWarning: (warning) => callbackWarnings.push(warning)
+      }
+    )
+
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'unsupported-effect',
+        effect: 'BACKGROUND_BLUR',
+        nodeId: node.id,
+        nodeName: 'Blurred layer'
+      })
+    ])
+    expect(callbackWarnings).toEqual(result.warnings)
   })
 })

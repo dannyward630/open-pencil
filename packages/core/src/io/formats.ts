@@ -445,19 +445,22 @@ export const svgFormat: IOFormatAdapter<'svg'> = {
     const target = resolveExportNodes(request)
     if (!target) throw new Error('Nothing to export')
     const { renderNodesToLaidOutSVG } = await import('./formats/svg/text/layout')
-    const data = await renderNodesToLaidOutSVG(
-      request.graph,
-      target.pageId,
-      target.nodeIds,
-      options
-    )
+    const warnings: NonNullable<ExportResult['warnings']> = []
+    const data = await renderNodesToLaidOutSVG(request.graph, target.pageId, target.nodeIds, {
+      ...options,
+      onWarning: (warning) => {
+        warnings.push(warning)
+        options?.onWarning?.(warning)
+      }
+    })
     if (!data) throw new Error('Nothing to export')
     return {
       format: 'svg',
       mimeType: 'image/svg+xml',
       extension: 'svg',
       data,
-      encoding: 'utf8'
+      encoding: 'utf8',
+      ...(warnings.length > 0 ? { warnings } : {})
     }
   }
 }

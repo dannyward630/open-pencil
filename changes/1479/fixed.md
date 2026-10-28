@@ -1,1 +1,2 @@
 - SVG export warns when backdrop blur cannot be represented and can omit it when requested instead of silently applying a layer blur. PDF and draw.io exports remain available and report the omitted effect.
+- SVG export results include warnings for skipped unsupported effects and continue to notify the `onWarning` callback.
