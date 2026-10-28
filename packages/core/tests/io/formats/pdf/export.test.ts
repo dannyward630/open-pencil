@@ -88,7 +88,7 @@ test('exports a PDF and warns when it omits backdrop blur', async () => {
       nodeId: node.id
     })
   ])
-  expect(receivedWarnings).toEqual(result?.warnings)
+  expect(receivedWarnings).toEqual(result?.warnings ?? [])
 })
 
 test('exports several PDFs at once', async () => {
