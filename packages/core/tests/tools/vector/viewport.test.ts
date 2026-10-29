@@ -40,6 +40,7 @@ describe('viewport_zoom_to_fit', () => {
     expect(viewportZoomToFit.execute(figma, { ids: ['missing'] })).toEqual({
       error: 'No valid nodes found'
     })
-    expect(figma.viewport).toEqual({ center: { x: 500, y: 300 }, zoom: 2 })
+    expect(figma.viewport.center).toEqual({ x: 500, y: 300 })
+    expect(figma.viewport.zoom).toBe(2)
   })
 })
