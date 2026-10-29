@@ -30,15 +30,16 @@ describe('viewport_zoom_to_fit', () => {
       bounds: { x: 100, y: 200, width: 5100, height: 3000 }
     })
     expect(figma.viewport.center).toEqual({ x: 2650, y: 1700 })
-    expect(figma.viewport.zoom).toBeLessThan(1)
+    expect(figma.viewport.zoom).toBeCloseTo(Math.min(1280 / 5260, 720 / 3160), 5)
   })
 
   test('returns an error when no requested nodes exist', () => {
     const figma = new FigmaAPI(new SceneGraph())
+    figma.viewport = { center: { x: 500, y: 300 }, zoom: 2 }
 
     expect(viewportZoomToFit.execute(figma, { ids: ['missing'] })).toEqual({
       error: 'No valid nodes found'
     })
-    expect(figma.viewport.zoom).toBe(1)
+    expect(figma.viewport).toEqual({ center: { x: 500, y: 300 }, zoom: 2 })
   })
 })
