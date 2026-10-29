@@ -194,6 +194,7 @@ export function useCanvasInput(
 
   function onDblClick(e: MouseEvent) {
     if (editor.state.play) return
+    if (editor.state.activeTool === 'COMMENT') return
     const { cx, cy } = getCoords(e)
     if (!editor.state.readOnly && valueEdit.start(cx, cy)) {
       e.preventDefault()
