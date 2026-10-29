@@ -231,7 +231,9 @@ export function useCanvasInput(
       e.preventDefault()
       return
     }
-    editor.setSelectedGuide(null)
+    if (e.button === 0 || editor.state.activeTool !== 'COMMENT') {
+      editor.setSelectedGuide(null)
+    }
 
     const selectedIdsBeforeMouseDown = new Set(editor.state.selectedIds)
     const clickCount = recordClick(sx, sy)
