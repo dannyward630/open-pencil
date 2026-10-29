@@ -1,0 +1,1 @@
+- The MCP viewport zoom-to-fit tool now scales selected nodes to fit the canvas.
