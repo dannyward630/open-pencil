@@ -1,4 +1,3 @@
-import { uniqBy } from 'es-toolkit/array'
 import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 
 import type { SceneGraph, SceneNode as CoreSceneNode, NodeType } from '@open-pencil/scene-graph'
@@ -19,11 +18,13 @@ import { defaultIcons, type IconProvider } from '#core/icons'
 import type { RasterCodec } from '#core/io/formats/raster'
 import { createSVGNodes } from '#core/io/formats/svg'
 import { textAutoResizeChanges } from '#core/layout/text-auto-resize'
-import { fontManager } from '#core/text/fonts'
+import { fontManager } from '#core/text/font/manager'
 
 import { componentFromNode } from './components'
 import { flattenSceneNodes } from './flatten'
-import { variationAxisTags, weightToStyleName, type FigmaFontNameInput } from './fonts'
+import { loadFigmaFont } from './fonts/load'
+import type { FigmaFontNameInput } from './fonts/names'
+import { variationAxisTags } from './fonts/variations'
 import * as images from './images'
 import type {
   FigmaBooleanOperationNode,
@@ -92,7 +93,8 @@ export type {
   FigmaVectorNode
 } from './node-types'
 export type { FigmaFont, FigmaFontName } from './proxy'
-export type { FigmaFontNameInput, FigmaVariationSettings } from './fonts'
+export type { FigmaFontNameInput } from './fonts/names'
+export type { FigmaVariationSettings } from './fonts/variations'
 
 // TODO(figma-api): Implement the full official PluginAPI interface once our compatibility
 // layer covers all required node-specific return types and unsupported APIs are modeled explicitly.
@@ -532,25 +534,9 @@ export class FigmaAPI implements NodeProxyHost {
 
   // --- Stubs ---
 
-  /**
-   * Loads the font so text measures and draws with it from then on. Hosts with their own font
-   * sources replace this; a font that cannot load is skipped, where Figma would reject.
-   */
+  /** Loads the font so text measures and draws with it from then on; rejects as Figma does. */
   async loadFontAsync(fontName: FigmaFontNameInput): Promise<void> {
-    if (fontName.style !== undefined) {
-      await fontManager.loadFont(fontName.family, fontName.style).catch(() => null)
-      return
-    }
-    // A family named alone loads every style it has. One style of each slant loads first, so the
-    // rest reuse its file where one variable file draws the whole slant.
-    const faces = (await fontManager.familyFaces(fontName.family).catch(() => null)) ?? [
-      { weight: 400, italic: false }
-    ]
-    const load = ({ weight, italic }: { weight: number; italic: boolean }) =>
-      fontManager.loadFont(fontName.family, weightToStyleName(weight, italic)).catch(() => null)
-    const first = uniqBy(faces, (face) => face.italic)
-    await Promise.all(first.map(load))
-    await Promise.all(faces.filter((face) => !first.includes(face)).map(load))
+    await loadFigmaFont(fontName)
   }
 
   /**

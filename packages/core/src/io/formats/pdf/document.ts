@@ -1,7 +1,7 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { SVGExportWarning } from '#core/io/formats/svg'
-import { fontManager } from '#core/text/fonts'
+import { fontManager } from '#core/text/font/manager'
 
 import { renderPagesToPDFDetailed, type PDFExportResult } from './export'
 import type { PDFPageSpec } from './plan'

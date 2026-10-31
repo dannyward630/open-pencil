@@ -16,6 +16,7 @@ import {
 } from './component-properties'
 import { CONNECTOR_ELEMENT, resolveConnectorEnds } from './connectors'
 import { elementNodeType, elementOwnLayer, type OwnLayerRenderer } from './elements'
+import { placeVectorPaths } from './overrides/vector'
 import { applySizeOverrides, propsToOverrides, shapeOverrides } from './props-overrides'
 import { LayerRefs } from './refs'
 import { prepareScalarBindings } from './scalar-bindings'
@@ -436,7 +437,7 @@ function applyInstanceOverrides(
     const prop = key.slice(sep + 1)
     const child = descendants.find((n) => n.name === childName)
     if (!child || !(prop in child)) continue
-    graph.updateNode(child.id, { [prop]: value } as Partial<SceneNode>)
+    graph.updateNode(child.id, { [prop]: value })
     setInstanceOverride(instance.instanceOverrides, instance.id, child.id, prop, value)
     mutated = true
   }
@@ -566,6 +567,7 @@ async function renderNodeContent<Artwork>(
       const { overrides, bindings } = elementOverrides(graph, nodeType, element, elementParentId)
       const created = graph.createNode(nodeType, elementParentId, overrides)
       applyBindings(graph, created.id, bindings)
+      placeVectorPaths(graph, created, element.props, (network) => services.vectorBounds(network))
       return created
     },
     instance: (element, elementParentId) => renderInstanceNode(graph, element, elementParentId),
@@ -581,6 +583,7 @@ async function renderNodeContent<Artwork>(
   const { overrides, bindings } = elementOverrides(graph, nodeType, tree, parentId)
   const node = graph.createNode(nodeType, parentId, overrides)
   applyBindings(graph, node.id, bindings)
+  placeVectorPaths(graph, node, tree.props, (network) => services.vectorBounds(network))
 
   for (const child of tree.children) {
     if (typeof child === 'string' || (node.type === 'TEXT' && isTextContent(child))) continue

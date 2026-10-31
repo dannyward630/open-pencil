@@ -14,7 +14,8 @@ export {
   nodeSummary,
   requireNode,
   NodeNotFoundError,
-  toolChangesDocument
+  toolChangesDocument,
+  toolFailure
 } from './schema'
 export type { ToolDef, ToolExecution, ToolCapability } from './schema'
 export {
@@ -47,9 +48,14 @@ export { setPexelsAPIKey, setUnsplashAccessKey } from './stock-photo'
 export { importMermaid, importSVG } from './create'
 export { arrangeNodes } from './structure'
 export {
+  checkStockPhotoKey,
+  getStockPhotoProvider,
   getStockPhotoProviders,
   registerStockPhotoProvider,
   setActiveStockPhotoProvider,
+  type StockPhotoKeyCheck,
+  type StockPhotoOrientation,
   type StockPhotoProvider,
-  type StockPhotoResult
+  type StockPhotoResult,
+  type StockPhotoSearchOptions
 } from './stock-photo/providers'
